@@ -1,7 +1,27 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useTheme } from "@/hooks/useTheme";
+
+interface ClientInfo {
+  id: string;
+  name: string;
+  website: string;
+  status: string;
+  brandDna: {
+    brandName: string;
+    website: string;
+    primaryColor?: string;
+    secondaryColor?: string;
+    brandColors?: string[];
+    brandFonts?: string[];
+    brandTone?: string;
+    targetAudience?: string;
+    industry?: string;
+    logoUrl?: string;
+  } | null;
+  logoUrl: string | null;
+}
 
 interface CampaignResult {
   strategy: {
@@ -13,13 +33,11 @@ interface CampaignResult {
   videos: { prompt: string; url?: string; error?: string }[];
 }
 
-interface GeneratedImage {
-  prompt: string;
-  base64: string;
-}
-
 export default function CampaignGenerator() {
   const { theme } = useTheme();
+  const [clients, setClients] = useState<ClientInfo[]>([]);
+  const [clientsLoading, setClientsLoading] = useState(true);
+  const [selectedClient, setSelectedClient] = useState<ClientInfo | null>(null);
   const [clientName, setClientName] = useState("");
   const [objective, setObjective] = useState("");
   const [platform, setPlatform] = useState<string>("instagram");
@@ -30,6 +48,57 @@ export default function CampaignGenerator() {
   const [result, setResult] = useState<CampaignResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedImageIdx, setSelectedImageIdx] = useState<number | null>(null);
+
+  // Load clients from Airtable
+  useEffect(() => {
+    fetch("/api/clients")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.clients) setClients(data.clients);
+      })
+      .catch(() => {})
+      .finally(() => setClientsLoading(false));
+  }, []);
+
+  // Auto-fill when client is selected
+  const handleClientSelect = useCallback((clientId: string) => {
+    if (!clientId) {
+      setSelectedClient(null);
+      setClientName("");
+      setBrandColors("");
+      return;
+    }
+    const client = clients.find((c) => c.id === clientId);
+    if (!client) return;
+    setSelectedClient(client);
+    setClientName(client.name);
+
+    // Auto-fill brand colors from Brand DNA
+    if (client.brandDna) {
+      const colors: string[] = [];
+      if (client.brandDna.primaryColor) colors.push(client.brandDna.primaryColor);
+      if (client.brandDna.secondaryColor) colors.push(client.brandDna.secondaryColor);
+      if (client.brandDna.brandColors) colors.push(...client.brandDna.brandColors);
+      if (colors.length > 0) setBrandColors([...new Set(colors)].join(", "));
+
+      // Auto-select tone from brand
+      if (client.brandDna.brandTone) {
+        const toneMap: Record<string, string> = {
+          professional: "professional",
+          friendly: "casual",
+          casual: "casual",
+          luxury: "luxury",
+          premium: "luxury",
+          fun: "playful",
+          playful: "playful",
+          bold: "bold",
+          edgy: "bold",
+        };
+        const mapped = toneMap[client.brandDna.brandTone.toLowerCase()];
+        if (mapped) setTone(mapped);
+      }
+    }
+  }, [clients]);
 
   const handleGenerate = useCallback(async () => {
     if (!clientName.trim() || !objective.trim()) {
@@ -97,6 +166,48 @@ export default function CampaignGenerator() {
         {/* Form */}
         <div className="bg-[var(--c-bg-surface)] border border-[var(--c-border-subtle)] rounded-xl p-6 mb-8 shadow-lg max-w-3xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {/* Client Selector from Airtable */}
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-[var(--c-text-secondary)] mb-1.5">
+                📋 Select Client from Airtable
+                <span className="text-[var(--c-text-muted)] font-normal ml-2">
+                  {clientsLoading ? "Loading..." : `${clients.length} clients`}
+                </span>
+              </label>
+              <select
+                value={selectedClient?.id || ""}
+                onChange={(e) => handleClientSelect(e.target.value)}
+                className="theme-input w-full px-3 py-2.5 rounded-lg border text-sm appearance-none"
+                disabled={clientsLoading}
+              >
+                <option value="">— Manual entry (type below) —</option>
+                {clients.map((client) => (
+                  <option key={client.id} value={client.id}>
+                    {client.name} {client.brandDna?.industry ? `(${client.brandDna.industry})` : ""}
+                    {client.status === "Active" ? " ★" : ""}
+                  </option>
+                ))}
+              </select>
+              {selectedClient?.brandDna && (
+                <div className="mt-2 p-2.5 bg-[var(--c-bg-elevated)] rounded-lg text-xs text-[var(--c-text-tertiary)] flex flex-wrap gap-3">
+                  {selectedClient.brandDna.industry && (
+                    <span>🏭 {selectedClient.brandDna.industry}</span>
+                  )}
+                  {selectedClient.brandDna.targetAudience && (
+                    <span>🎯 {selectedClient.brandDna.targetAudience}</span>
+                  )}
+                  {selectedClient.brandDna.brandTone && (
+                    <span>🎭 {selectedClient.brandDna.brandTone}</span>
+                  )}
+                  {selectedClient.website && (
+                    <a href={selectedClient.website} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+                      🌐 Website
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Client Name */}
             <div>
               <label className="block text-sm font-medium text-[var(--c-text-secondary)] mb-1.5">
