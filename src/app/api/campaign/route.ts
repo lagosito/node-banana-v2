@@ -109,10 +109,22 @@ IMPORTANT RULES:
 
   try {
     const parsed = JSON.parse(jsonStr);
+    // Normalize: videoPrompts might be objects or strings
+    const normalizedVideoPrompts = (parsed.videoPrompts || []).slice(0, 3).map((vp: unknown) => {
+      if (typeof vp === "string") return vp;
+      if (typeof vp === "object" && vp !== null) {
+        const obj = vp as Record<string, string>;
+        return [obj.openingShot, obj.movementAction, obj.closingShot, obj.mood && `Mood: ${obj.mood}`]
+          .filter(Boolean)
+          .join(". ");
+      }
+      return String(vp);
+    });
+
     return {
-      imagePrompts: parsed.imagePrompts?.slice(0, 5) || [],
-      videoPrompts: parsed.videoPrompts?.slice(0, 3) || [],
-      captions: parsed.captions?.slice(0, 5) || [],
+      imagePrompts: (parsed.imagePrompts || []).slice(0, 5),
+      videoPrompts: normalizedVideoPrompts,
+      captions: (parsed.captions || []).slice(0, 5),
     };
   } catch (parseErr) {
     console.error("[Campaign] Failed to parse LLM response:", jsonStr.slice(0, 1000));
