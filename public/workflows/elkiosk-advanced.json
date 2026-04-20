@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "id": "elkiosk-advanced-template",
+  "name": "🚀 Advanced — 40+ Posts (IG + FB + LinkedIn + TikTok)",
+  "_elkiosk": { "tier": "advanced", "platforms": ["Instagram", "Facebook", "LinkedIn", "TikTok"] },
+  "edgeStyle": "default",
+  "groups": {
+    "group-brand": { "id": "group-brand", "name": "🎨 Brand DNA", "color": "purple", "position": { "x": -20, "y": -20 }, "size": { "width": 960, "height": 320 }, "locked": false },
+    "group-strategy": { "id": "group-strategy", "name": "🧠 Content Strategy", "color": "neutral", "position": { "x": -20, "y": 360 }, "size": { "width": 1200, "height": 280 }, "locked": false },
+    "group-ig": { "id": "group-ig", "name": "📸 Instagram — 5 Posts", "color": "blue", "position": { "x": -20, "y": 700 }, "size": { "width": 2800, "height": 420 }, "locked": false },
+    "group-fb": { "id": "group-fb", "name": "📘 Facebook — 3 Posts", "color": "green", "position": { "x": -20, "y": 1180 }, "size": { "width": 1800, "height": 420 }, "locked": false },
+    "group-li": { "id": "group-li", "name": "💼 LinkedIn — 2 Posts", "color": "orange", "position": { "x": -20, "y": 1660 }, "size": { "width": 1200, "height": 420 }, "locked": false },
+    "group-tt": { "id": "group-tt", "name": "🎵 TikTok — 3 Videos", "color": "red", "position": { "x": -20, "y": 2140 }, "size": { "width": 1800, "height": 420 }, "locked": false }
+  },
+  "nodes": [
+    { "id": "prompt-brand", "type": "prompt", "position": { "x": 20, "y": 40 }, "groupId": "group-brand", "data": { "label": "Brand Context", "variableName": "brand_context", "prompt": "⚠️ Load a client above to populate this automatically.
+
+Brand: [Client Name]
+Colors: primary [#color], secondary [#color]
+Fonts: [Display Font] / [Body Font]
+Tone: [tone tags]
+Aesthetic: [aesthetic tags]
+Tagline: [tagline]
+Do's: [dos]
+Don'ts: [donts]", "status": "idle", "error": null }, "width": 320, "height": 260 },
+    { "id": "prompt-platform-ig", "type": "prompt", "position": { "x": 360, "y": 40 }, "groupId": "group-brand", "data": { "label": "Instagram Context", "variableName": "platform_ig", "prompt": "Platform: Instagram
+Format: Square 1:1, Reel 9:16
+Style: Visual-first, engaging, story-driven
+Tone: Conversational, authentic", "status": "idle", "error": null }, "width": 180, "height": 200 },
+    { "id": "prompt-platform-li", "type": "prompt", "position": { "x": 560, "y": 40 }, "groupId": "group-brand", "data": { "label": "LinkedIn Context", "variableName": "platform_li", "prompt": "Platform: LinkedIn
+Format: Landscape 1.91:1
+Style: Professional, thought-leadership
+Tone: Expert, credible", "status": "idle", "error": null }, "width": 180, "height": 200 },
+    { "id": "prompt-platform-tt", "type": "prompt", "position": { "x": 760, "y": 40 }, "groupId": "group-brand", "data": { "label": "TikTok Context", "variableName": "platform_tt", "prompt": "Platform: TikTok
+Format: Vertical 9:16, motion 25s
+Style: Trendy, hook in first 2s
+Tone: Fun, energetic, relatable", "status": "idle", "error": null }, "width": 180, "height": 200 },
+    { "id": "llm-strategy", "type": "llmGenerate", "position": { "x": 20, "y": 420 }, "groupId": "group-strategy", "data": { "label": "🧠 Monthly Content Strategy", "inputPrompt": null, "inputImages": [], "outputText": null, "provider": "anthropic", "model": "claude-opus-4-5", "temperature": 0.7, "maxTokens": 800, "status": "idle", "error": null }, "width": 400, "height": 200 },
+    { "id": "prompt-strategy-instruction", "type": "prompt", "position": { "x": 440, "y": 400 }, "groupId": "group-strategy", "data": { "label": "Strategy Instruction", "variableName": "strategy_instruction", "prompt": "Generate a monthly content strategy with 4 content pillars for this brand.
+For each pillar: name, description, 2 post ideas.
+Keep it concise and actionable.", "status": "idle", "error": null }, "width": 300, "height": 160 },
+    { "id": "llm-ig-1", "type": "llmGenerate", "position": { "x": 20, "y": 760 }, "groupId": "group-ig", "data": { "label": "IG Post 1", "inputPrompt": null, "inputImages": [], "outputText": null, "provider": "anthropic", "model": "claude-opus-4-5", "temperature": 0.8, "maxTokens": 200, "status": "idle", "error": null }, "width": 240, "height": 180 },
+    { "id": "img-ig-1", "type": "nanoBanana", "position": { "x": 280, "y": 740 }, "groupId": "group-ig", "data": { "label": "IG 1", "inputImages": [], "inputPrompt": null, "outputImage": null, "aspectRatio": "1:1", "resolution": "1K", "model": "nano-banana-pro", "selectedModel": { "provider": "gemini", "modelId": "nano-banana-pro", "displayName": "Nano Banana Pro" }, "useGoogleSearch": false, "useImageSearch": false, "status": "idle", "error": null, "imageHistory": [], "selectedHistoryIndex": 0 }, "width": 260, "height": 300 },
+    { "id": "llm-ig-2", "type": "llmGenerate", "position": { "x": 570, "y": 760 }, "groupId": "group-ig", "data": { "label": "IG Post 2", "inputPrompt": null, "inputImages": [], "outputText": null, "provider": "anthropic", "model": "claude-opus-4-5", "temperature": 0.8, "maxTokens": 200, "status": "idle", "error": null }, "width": 240, "height": 180 },
+    { "id": "img-ig-2", "type": "nanoBanana", "position": { "x": 830, "y": 740 }, "groupId": "group-ig", "data": { "label": "IG 2", "inputImages": [], "inputPrompt": null, "outputImage": null, "aspectRatio": "1:1", "resolution": "1K", "model": "nano-banana-pro", "selectedModel": { "provider": "gemini", "modelId": "nano-banana-pro", "displayName": "Nano Banana Pro" }, "useGoogleSearch": false, "useImageSearch": false, "status": "idle", "error": null, "imageHistory": [], "selectedHistoryIndex": 0 }, "width": 260, "height": 300 },
+    { "id": "llm-ig-3", "type": "llmGenerate", "position": { "x": 1120, "y": 760 }, "groupId": "group-ig", "data": { "label": "IG Post 3", "inputPrompt": null, "inputImages": [], "outputText": null, "provider": "anthropic", "model": "claude-opus-4-5", "temperature": 0.8, "maxTokens": 200, "status": "idle", "error": null }, "width": 240, "height": 180 },
+    { "id": "img-ig-3", "type": "nanoBanana", "position": { "x": 1380, "y": 740 }, "groupId": "group-ig", "data": { "label": "IG 3", "inputImages": [], "inputPrompt": null, "outputImage": null, "aspectRatio": "1:1", "resolution": "1K", "model": "nano-banana-pro", "selectedModel": { "provider": "gemini", "modelId": "nano-banana-pro", "displayName": "Nano Banana Pro" }, "useGoogleSearch": false, "useImageSearch": false, "status": "idle", "error": null, "imageHistory": [], "selectedHistoryIndex": 0 }, "width": 260, "height": 300 },
+    { "id": "llm-fb-1", "type": "llmGenerate", "position": { "x": 20, "y": 1240 }, "groupId": "group-fb", "data": { "label": "FB Post 1", "inputPrompt": null, "inputImages": [], "outputText": null, "provider": "anthropic", "model": "claude-opus-4-5", "temperature": 0.8, "maxTokens": 200, "status": "idle", "error": null }, "width": 240, "height": 180 },
+    { "id": "img-fb-1", "type": "nanoBanana", "position": { "x": 280, "y": 1220 }, "groupId": "group-fb", "data": { "label": "FB 1", "inputImages": [], "inputPrompt": null, "outputImage": null, "aspectRatio": "1:1", "resolution": "1K", "model": "nano-banana-pro", "selectedModel": { "provider": "gemini", "modelId": "nano-banana-pro", "displayName": "Nano Banana Pro" }, "useGoogleSearch": false, "useImageSearch": false, "status": "idle", "error": null, "imageHistory": [], "selectedHistoryIndex": 0 }, "width": 260, "height": 300 },
+    { "id": "llm-fb-2", "type": "llmGenerate", "position": { "x": 570, "y": 1240 }, "groupId": "group-fb", "data": { "label": "FB Post 2", "inputPrompt": null, "inputImages": [], "outputText": null, "provider": "anthropic", "model": "claude-opus-4-5", "temperature": 0.8, "maxTokens": 200, "status": "idle", "error": null }, "width": 240, "height": 180 },
+    { "id": "img-fb-2", "type": "nanoBanana", "position": { "x": 830, "y": 1220 }, "groupId": "group-fb", "data": { "label": "FB 2", "inputImages": [], "inputPrompt": null, "outputImage": null, "aspectRatio": "1:1", "resolution": "1K", "model": "nano-banana-pro", "selectedModel": { "provider": "gemini", "modelId": "nano-banana-pro", "displayName": "Nano Banana Pro" }, "useGoogleSearch": false, "useImageSearch": false, "status": "idle", "error": null, "imageHistory": [], "selectedHistoryIndex": 0 }, "width": 260, "height": 300 },
+    { "id": "llm-li-1", "type": "llmGenerate", "position": { "x": 20, "y": 1720 }, "groupId": "group-li", "data": { "label": "LI Post 1", "inputPrompt": null, "inputImages": [], "outputText": null, "provider": "anthropic", "model": "claude-opus-4-5", "temperature": 0.7, "maxTokens": 300, "status": "idle", "error": null }, "width": 240, "height": 180 },
+    { "id": "img-li-1", "type": "nanoBanana", "position": { "x": 280, "y": 1700 }, "groupId": "group-li", "data": { "label": "LI 1", "inputImages": [], "inputPrompt": null, "outputImage": null, "aspectRatio": "1.91:1", "resolution": "1K", "model": "nano-banana-pro", "selectedModel": { "provider": "gemini", "modelId": "nano-banana-pro", "displayName": "Nano Banana Pro" }, "useGoogleSearch": false, "useImageSearch": false, "status": "idle", "error": null, "imageHistory": [], "selectedHistoryIndex": 0 }, "width": 260, "height": 300 },
+    { "id": "llm-li-2", "type": "llmGenerate", "position": { "x": 570, "y": 1720 }, "groupId": "group-li", "data": { "label": "LI Post 2", "inputPrompt": null, "inputImages": [], "outputText": null, "provider": "anthropic", "model": "claude-opus-4-5", "temperature": 0.7, "maxTokens": 300, "status": "idle", "error": null }, "width": 240, "height": 180 },
+    { "id": "img-li-2", "type": "nanoBanana", "position": { "x": 830, "y": 1700 }, "groupId": "group-li", "data": { "label": "LI 2", "inputImages": [], "inputPrompt": null, "outputImage": null, "aspectRatio": "1.91:1", "resolution": "1K", "model": "nano-banana-pro", "selectedModel": { "provider": "gemini", "modelId": "nano-banana-pro", "displayName": "Nano Banana Pro" }, "useGoogleSearch": false, "useImageSearch": false, "status": "idle", "error": null, "imageHistory": [], "selectedHistoryIndex": 0 }, "width": 260, "height": 300 },
+    { "id": "llm-tt-1", "type": "llmGenerate", "position": { "x": 20, "y": 2200 }, "groupId": "group-tt", "data": { "label": "TikTok Script 1", "inputPrompt": null, "inputImages": [], "outputText": null, "provider": "anthropic", "model": "claude-opus-4-5", "temperature": 0.9, "maxTokens": 250, "status": "idle", "error": null }, "width": 260, "height": 200 },
+    { "id": "vid-tt-1", "type": "generateVideo", "position": { "x": 300, "y": 2180 }, "groupId": "group-tt", "data": { "label": "TikTok Video 1", "inputImages": [], "inputPrompt": null, "outputVideo": null, "selectedModel": { "provider": "wavespeed", "modelId": "wavespeed-ai/wan-2.1-i2v-480p", "displayName": "WaveSpeed Wan 2.1" }, "parameters": {}, "status": "idle", "error": null, "videoHistory": [], "selectedVideoHistoryIndex": 0 }, "width": 280, "height": 340 },
+    { "id": "llm-tt-2", "type": "llmGenerate", "position": { "x": 620, "y": 2200 }, "groupId": "group-tt", "data": { "label": "TikTok Script 2", "inputPrompt": null, "inputImages": [], "outputText": null, "provider": "anthropic", "model": "claude-opus-4-5", "temperature": 0.9, "maxTokens": 250, "status": "idle", "error": null }, "width": 260, "height": 200 },
+    { "id": "vid-tt-2", "type": "generateVideo", "position": { "x": 900, "y": 2180 }, "groupId": "group-tt", "data": { "label": "TikTok Video 2", "inputImages": [], "inputPrompt": null, "outputVideo": null, "selectedModel": { "provider": "wavespeed", "modelId": "wavespeed-ai/wan-2.1-i2v-480p", "displayName": "WaveSpeed Wan 2.1" }, "parameters": {}, "status": "idle", "error": null, "videoHistory": [], "selectedVideoHistoryIndex": 0 }, "width": 280, "height": 340 },
+    { "id": "llm-tt-3", "type": "llmGenerate", "position": { "x": 1220, "y": 2200 }, "groupId": "group-tt", "data": { "label": "TikTok Script 3", "inputPrompt": null, "inputImages": [], "outputText": null, "provider": "anthropic", "model": "claude-opus-4-5", "temperature": 0.9, "maxTokens": 250, "status": "idle", "error": null }, "width": 260, "height": 200 },
+    { "id": "vid-tt-3", "type": "generateVideo", "position": { "x": 1500, "y": 2180 }, "groupId": "group-tt", "data": { "label": "TikTok Video 3", "inputImages": [], "inputPrompt": null, "outputVideo": null, "selectedModel": { "provider": "wavespeed", "modelId": "wavespeed-ai/wan-2.1-i2v-480p", "displayName": "WaveSpeed Wan 2.1" }, "parameters": {}, "status": "idle", "error": null, "videoHistory": [], "selectedVideoHistoryIndex": 0 }, "width": 280, "height": 340 },
+    { "id": "gallery-ig", "type": "outputGallery", "position": { "x": 2780, "y": 760 }, "data": { "label": "📤 IG Gallery", "images": [], "status": "idle", "error": null }, "width": 380, "height": 400 },
+    { "id": "gallery-fb", "type": "outputGallery", "position": { "x": 2780, "y": 1240 }, "data": { "label": "📤 FB Gallery", "images": [], "status": "idle", "error": null }, "width": 380, "height": 400 },
+    { "id": "gallery-li", "type": "outputGallery", "position": { "x": 2780, "y": 1720 }, "data": { "label": "📤 LI Gallery", "images": [], "status": "idle", "error": null }, "width": 380, "height": 400 }
+  ],
+  "edges": [
+    { "id": "e-brand-strategy", "source": "prompt-brand", "target": "llm-strategy", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-strat-instr", "source": "prompt-strategy-instruction", "target": "llm-strategy", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-brand-ig1", "source": "prompt-brand", "target": "llm-ig-1", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-brand-ig2", "source": "prompt-brand", "target": "llm-ig-2", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-brand-ig3", "source": "prompt-brand", "target": "llm-ig-3", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-brand-fb1", "source": "prompt-brand", "target": "llm-fb-1", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-brand-fb2", "source": "prompt-brand", "target": "llm-fb-2", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-brand-li1", "source": "prompt-brand", "target": "llm-li-1", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-brand-li2", "source": "prompt-brand", "target": "llm-li-2", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-brand-tt1", "source": "prompt-brand", "target": "llm-tt-1", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-brand-tt2", "source": "prompt-brand", "target": "llm-tt-2", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-brand-tt3", "source": "prompt-brand", "target": "llm-tt-3", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-plig-ig1", "source": "prompt-platform-ig", "target": "llm-ig-1", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-plig-ig2", "source": "prompt-platform-ig", "target": "llm-ig-2", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-plig-ig3", "source": "prompt-platform-ig", "target": "llm-ig-3", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-plli-li1", "source": "prompt-platform-li", "target": "llm-li-1", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-plli-li2", "source": "prompt-platform-li", "target": "llm-li-2", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-pltt-tt1", "source": "prompt-platform-tt", "target": "llm-tt-1", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-pltt-tt2", "source": "prompt-platform-tt", "target": "llm-tt-2", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-pltt-tt3", "source": "prompt-platform-tt", "target": "llm-tt-3", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-ig1-img1", "source": "llm-ig-1", "target": "img-ig-1", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-ig2-img2", "source": "llm-ig-2", "target": "img-ig-2", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-ig3-img3", "source": "llm-ig-3", "target": "img-ig-3", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-fb1-imgfb1", "source": "llm-fb-1", "target": "img-fb-1", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-fb2-imgfb2", "source": "llm-fb-2", "target": "img-fb-2", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-li1-imgli1", "source": "llm-li-1", "target": "img-li-1", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-li2-imgli2", "source": "llm-li-2", "target": "img-li-2", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-tt1-vid1", "source": "llm-tt-1", "target": "vid-tt-1", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-tt2-vid2", "source": "llm-tt-2", "target": "vid-tt-2", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-tt3-vid3", "source": "llm-tt-3", "target": "vid-tt-3", "sourceHandle": "text", "targetHandle": "text" },
+    { "id": "e-imgig1-gig", "source": "img-ig-1", "target": "gallery-ig", "sourceHandle": "image", "targetHandle": "image" },
+    { "id": "e-imgig2-gig", "source": "img-ig-2", "target": "gallery-ig", "sourceHandle": "image", "targetHandle": "image" },
+    { "id": "e-imgig3-gig", "source": "img-ig-3", "target": "gallery-ig", "sourceHandle": "image", "targetHandle": "image" },
+    { "id": "e-imgfb1-gfb", "source": "img-fb-1", "target": "gallery-fb", "sourceHandle": "image", "targetHandle": "image" },
+    { "id": "e-imgfb2-gfb", "source": "img-fb-2", "target": "gallery-fb", "sourceHandle": "image", "targetHandle": "image" },
+    { "id": "e-imgli1-gli", "source": "img-li-1", "target": "gallery-li", "sourceHandle": "image", "targetHandle": "image" },
+    { "id": "e-imgli2-gli", "source": "img-li-2", "target": "gallery-li", "sourceHandle": "image", "targetHandle": "image" }
+  ]
+}

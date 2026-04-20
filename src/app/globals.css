@@ -1,0 +1,488 @@
+@import "tailwindcss";
+
+@theme {
+  /* Semantic theme colors — these resolve to CSS variables */
+  --color-theme-bg: var(--c-bg);
+  --color-theme-bg-canvas: var(--c-bg-canvas);
+  --color-theme-bg-surface: var(--c-bg-surface);
+  --color-theme-bg-elevated: var(--c-bg-elevated);
+  --color-theme-bg-hover: var(--c-bg-hover);
+  --color-theme-border: var(--c-border);
+  --color-theme-border-subtle: var(--c-border-subtle);
+  --color-theme-text: var(--c-text);
+  --color-theme-text-secondary: var(--c-text-secondary);
+  --color-theme-text-tertiary: var(--c-text-tertiary);
+  --color-theme-text-muted: var(--c-text-muted);
+}
+
+/* ─── Dark theme (default) ─── */
+:root,
+html.dark {
+  --background: #0a0a0a;
+  --foreground: #fafafa;
+
+  /* Semantic tokens */
+  --c-bg: #0a0a0a;
+  --c-bg-canvas: #171717;
+  --c-bg-surface: #171717;
+  --c-bg-elevated: #262626;
+  --c-bg-hover: #404040;
+  --c-border: #404040;
+  --c-border-subtle: #2e2e2e;
+  --c-text: #fafafa;
+  --c-text-secondary: #d4d4d4;
+  --c-text-tertiary: #a3a3a3;
+  --c-text-muted: #737373;
+
+  /* Handle colors */
+  --handle-color-image: #10b981;
+  --handle-color-text: #3b82f6;
+  --handle-color-3d: #f97316;
+  --handle-color-audio: #a855f7;
+
+  /* Header */
+  --c-header-bg: #111111;
+  --c-header-border: #262626;
+
+  /* Node styling */
+  --c-node-bg: #1a1a1a;
+  --c-node-border: #333333;
+  --c-node-header-bg: #222222;
+  --c-node-shadow: rgba(0, 0, 0, 0.4);
+
+  /* Controls panel */
+  --c-controls-bg: #262626;
+  --c-controls-border: #404040;
+  --c-controls-btn-hover: #404040;
+  --c-controls-icon: #d4d4d4;
+
+  /* Scrollbar */
+  --c-scrollbar-track: #262626;
+  --c-scrollbar-thumb: #525252;
+  --c-scrollbar-thumb-hover: #737373;
+
+  /* Edge */
+  --c-edge: #94a3b8;
+  --c-edge-selected: #3b82f6;
+
+  /* Minimap */
+  --c-minimap-bg: rgba(0, 0, 0, 0.7);
+  --c-minimap-mask: rgba(255, 255, 255, 0.1);
+
+  /* React Flow dots */
+  --c-dot-primary: #444444;
+  --c-dot-secondary: #333333;
+
+  /* Floating action bar */
+  --c-fab-bg: #1a1a1a;
+  --c-fab-border: #333333;
+
+  /* Modals / dialogs */
+  --c-modal-overlay: rgba(0, 0, 0, 0.6);
+  --c-modal-bg: #171717;
+  --c-modal-border: #333333;
+
+  /* Input fields */
+  --c-input-bg: #1a1a1a;
+  --c-input-border: #404040;
+  --c-input-focus: #3b82f6;
+
+  /* Chat panel */
+  --c-chat-bg: #111111;
+  --c-chat-user-bg: #1e3a5f;
+  --c-chat-assistant-bg: #1a1a1a;
+}
+
+/* ─── Light theme ─── */
+html.light {
+  --background: #ffffff;
+  --foreground: #171717;
+
+  /* Semantic tokens */
+  --c-bg: #ffffff;
+  --c-bg-canvas: #f5f5f5;
+  --c-bg-surface: #ffffff;
+  --c-bg-elevated: #f0f0f0;
+  --c-bg-hover: #e5e5e5;
+  --c-border: #d4d4d4;
+  --c-border-subtle: #e5e5e5;
+  --c-text: #171717;
+  --c-text-secondary: #404040;
+  --c-text-tertiary: #737373;
+  --c-text-muted: #a3a3a3;
+
+  /* Handle colors — slightly darker for contrast on white */
+  --handle-color-image: #059669;
+  --handle-color-text: #2563eb;
+  --handle-color-3d: #ea580c;
+  --handle-color-audio: #9333ea;
+
+  /* Header */
+  --c-header-bg: #fafafa;
+  --c-header-border: #e5e5e5;
+
+  /* Node styling */
+  --c-node-bg: #ffffff;
+  --c-node-border: #d4d4d4;
+  --c-node-header-bg: #f5f5f5;
+  --c-node-shadow: rgba(0, 0, 0, 0.08);
+
+  /* Controls panel */
+  --c-controls-bg: #ffffff;
+  --c-controls-border: #d4d4d4;
+  --c-controls-btn-hover: #f0f0f0;
+  --c-controls-icon: #525252;
+
+  /* Scrollbar */
+  --c-scrollbar-track: #f0f0f0;
+  --c-scrollbar-thumb: #c4c4c4;
+  --c-scrollbar-thumb-hover: #a3a3a3;
+
+  /* Edge */
+  --c-edge: #94a3b8;
+  --c-edge-selected: #3b82f6;
+
+  /* Minimap */
+  --c-minimap-bg: rgba(255, 255, 255, 0.85);
+  --c-minimap-mask: rgba(0, 0, 0, 0.08);
+
+  /* React Flow dots */
+  --c-dot-primary: #d4d4d4;
+  --c-dot-secondary: #e5e5e5;
+
+  /* Floating action bar */
+  --c-fab-bg: #ffffff;
+  --c-fab-border: #d4d4d4;
+
+  /* Modals / dialogs */
+  --c-modal-overlay: rgba(0, 0, 0, 0.3);
+  --c-modal-bg: #ffffff;
+  --c-modal-border: #e5e5e5;
+
+  /* Input fields */
+  --c-input-bg: #ffffff;
+  --c-input-border: #d4d4d4;
+  --c-input-focus: #3b82f6;
+
+  /* Chat panel */
+  --c-chat-bg: #fafafa;
+  --c-chat-user-bg: #dbeafe;
+  --c-chat-assistant-bg: #f5f5f5;
+}
+
+html {
+  /* Required for overscroll-behavior to work in Chrome on macOS */
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  /* Prevent browser back/forward swipe navigation on macOS */
+  overscroll-behavior-x: none;
+  /* Prevent touch gestures from triggering navigation */
+  touch-action: pan-y pinch-zoom;
+}
+
+/* React Flow customizations */
+.react-flow {
+  /* Prevent browser back/forward swipe navigation when panning */
+  overscroll-behavior-x: none;
+  touch-action: none;
+}
+
+.react-flow__node {
+  font-family: inherit;
+}
+
+/* Skip hit-testing on images inside nodes — parent containers handle all
+   click/hover events. Prevents expensive bitmap decoding during mouse movement. */
+.react-flow__node img {
+  pointer-events: none;
+}
+
+/* During active panning or node dragging, disable pointer events on all node
+   content to eliminate expensive browser hit-testing against the DOM tree.
+   The class is toggled on <html> via direct DOM access (no React re-render). */
+.canvas-interacting .react-flow__node > * {
+  pointer-events: none;
+}
+
+/* Remove default React Flow styling for output nodes to match custom nodes */
+.react-flow__node-output {
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Switch dimming - nodes downstream of disabled Switch outputs */
+.react-flow__node.switch-dimmed {
+  opacity: 0.4;
+  transition: opacity 250ms ease-in-out;
+}
+
+/* Skip dimming - nodes skipped due to optional empty inputs */
+.react-flow__node.node-skipped {
+  opacity: 0.35;
+  transition: opacity 250ms ease-in-out;
+}
+
+.react-flow__node:not(.switch-dimmed):not(.node-skipped) {
+  transition: opacity 250ms ease-in-out;
+}
+
+/* Base handle styles */
+.react-flow__handle {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--c-bg-surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  z-index: 5;
+}
+
+/* Larger invisible hit area for easier clicking, especially when zoomed out */
+.react-flow__handle::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+}
+
+.react-flow__handle-left {
+  left: -7px;
+}
+
+.react-flow__handle-right {
+  right: -7px;
+}
+
+/* Image handles - soft green */
+.react-flow__handle[data-handletype="image"] {
+  background: var(--handle-color-image);
+}
+
+/* Text handles - soft blue */
+.react-flow__handle[data-handletype="text"] {
+  background: var(--handle-color-text);
+}
+
+/* Audio handles - purple */
+.react-flow__handle[data-handletype="audio"] {
+  background: var(--handle-color-audio);
+}
+
+/* 3D handles - orange */
+.react-flow__handle[data-handletype="3d"] {
+  background: var(--handle-color-3d);
+}
+
+.react-flow__edge-path {
+  stroke: var(--c-edge);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.react-flow__edge.selected .react-flow__edge-path,
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke: var(--c-edge-selected);
+}
+
+/* Hide resize handles but show resize cursor on edges */
+.react-flow__resize-control {
+  opacity: 0 !important;
+  pointer-events: auto !important;
+}
+
+.react-flow__resize-control.left,
+.react-flow__resize-control.right {
+  cursor: ew-resize !important;
+  width: 16px !important;
+}
+
+.react-flow__resize-control.top,
+.react-flow__resize-control.bottom {
+  cursor: ns-resize !important;
+  height: 16px !important;
+}
+
+.react-flow__resize-control.top.left,
+.react-flow__resize-control.bottom.right {
+  cursor: nwse-resize !important;
+}
+
+.react-flow__resize-control.top.right,
+.react-flow__resize-control.bottom.left {
+  cursor: nesw-resize !important;
+}
+
+/* React Flow Controls — theme-aware */
+.react-flow__controls {
+  background: var(--c-controls-bg) !important;
+  border: 1px solid var(--c-controls-border) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.15) !important;
+}
+
+.react-flow__controls-button {
+  background: var(--c-controls-bg) !important;
+  border-bottom: 1px solid var(--c-controls-border) !important;
+}
+
+.react-flow__controls-button svg {
+  fill: var(--c-controls-icon) !important;
+}
+
+.react-flow__controls-button svg path {
+  fill: var(--c-controls-icon) !important;
+}
+
+.react-flow__controls-button:hover {
+  background: var(--c-controls-btn-hover) !important;
+}
+
+.react-flow__controls-button:hover svg,
+.react-flow__controls-button:hover svg path {
+  fill: var(--c-text) !important;
+}
+
+.react-flow__controls-button:last-child {
+  border-bottom: none !important;
+}
+
+/* React Flow background dots — theme-aware */
+.react-flow__background pattern circle:first-child {
+  fill: var(--c-dot-primary);
+}
+.react-flow__background pattern circle:last-child {
+  fill: var(--c-dot-secondary);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--c-scrollbar-track);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--c-scrollbar-thumb);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--c-scrollbar-thumb-hover);
+}
+
+/* Make the multi-selection box pass through pointer events so we can still
+   interact with handles, resize controls, and other node elements */
+.react-flow__nodesselection-rect {
+  pointer-events: none !important;
+}
+
+/* Edge pulse animation for loading connectors */
+@keyframes flowPulse {
+  0% {
+    stroke-dashoffset: 50;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Fan animation for image history */
+@keyframes fanEnter {
+  0% {
+    opacity: 0;
+    transform: scale(0.3) translate(0, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translate(var(--fan-x), var(--fan-y));
+  }
+}
+
+@keyframes fanExit {
+  0% {
+    opacity: 1;
+    transform: scale(1) translate(var(--fan-x), var(--fan-y));
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.3) translate(0, 0);
+  }
+}
+
+.animate-fan-enter {
+  animation: fanEnter 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.animate-fan-exit {
+  animation: fanExit 0.15s ease-in forwards;
+}
+
+/* ─── Theme-aware utility classes ─── */
+/* These provide drop-in replacements for common hardcoded dark patterns */
+
+/* Header */
+.theme-header {
+  background: var(--c-header-bg);
+  border-color: var(--c-header-border);
+}
+
+/* Buttons in header/toolbar — replace text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 */
+.theme-btn-ghost {
+  color: var(--c-text-tertiary);
+}
+.theme-btn-ghost:hover {
+  color: var(--c-text);
+  background: var(--c-bg-hover);
+}
+
+/* Dividers — replace border-neutral-700 / border-neutral-700/50 */
+.theme-divider {
+  border-color: var(--c-border-subtle);
+}
+
+/* Nodes */
+.theme-node-bg {
+  background: var(--c-node-bg);
+  border-color: var(--c-node-border);
+  box-shadow: 0 4px 12px var(--c-node-shadow);
+}
+
+/* Modal */
+.theme-modal-overlay {
+  background: var(--c-modal-overlay);
+}
+.theme-modal-bg {
+  background: var(--c-modal-bg);
+  border-color: var(--c-modal-border);
+}
+
+/* Input fields */
+.theme-input {
+  background: var(--c-input-bg);
+  border-color: var(--c-input-border);
+  color: var(--c-text);
+}
+.theme-input:focus {
+  border-color: var(--c-input-focus);
+  outline: none;
+}
+.theme-input::placeholder {
+  color: var(--c-text-muted);
+}
