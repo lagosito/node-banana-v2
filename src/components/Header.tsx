@@ -225,6 +225,14 @@ export function Header() {
             <ClientLoader />
           </div>
 
+          <a
+            href="/campaign"
+            className="ml-3 px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors bg-[var(--c-text)] text-[var(--c-bg)] hover:bg-[var(--c-text-secondary)]"
+            title="Open Campaign Generator"
+          >
+            🎯 Campaigns
+          </a>
+
           <div className="flex items-center gap-2 ml-4 pl-4 theme-divider border-l">
             {isProjectConfigured ? (
               <>
