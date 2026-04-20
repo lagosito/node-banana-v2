@@ -89,12 +89,23 @@ IMPORTANT RULES:
   });
 
   const text = response.text || "";
+  console.log(`[Campaign] Raw LLM response (${text.length} chars):`, text.slice(0, 500));
 
-  // Extract JSON from response (handle markdown code blocks)
+  // Extract JSON from response — handle markdown code blocks, extra text, etc.
   let jsonStr = text.trim();
-  if (jsonStr.startsWith("```")) {
-    jsonStr = jsonStr.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+
+  // Try to find JSON object in the response
+  const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    jsonStr = jsonMatch[0];
   }
+
+  // Clean up common issues
+  jsonStr = jsonStr
+    .replace(/^```(?:json)?\s*/gm, "")
+    .replace(/\s*```$/gm, "")
+    .replace(/\n\s*\/\/.*$/gm, "") // remove JS-style comments
+    .trim();
 
   try {
     const parsed = JSON.parse(jsonStr);
@@ -103,9 +114,10 @@ IMPORTANT RULES:
       videoPrompts: parsed.videoPrompts?.slice(0, 3) || [],
       captions: parsed.captions?.slice(0, 5) || [],
     };
-  } catch {
-    console.error("[Campaign] Failed to parse LLM response:", text);
-    throw new Error("Failed to parse campaign strategy. Please try again.");
+  } catch (parseErr) {
+    console.error("[Campaign] Failed to parse LLM response:", jsonStr.slice(0, 1000));
+    console.error("[Campaign] Parse error:", parseErr);
+    throw new Error(`Failed to parse campaign strategy. Raw response: ${text.slice(0, 300)}`);
   }
 }
 
