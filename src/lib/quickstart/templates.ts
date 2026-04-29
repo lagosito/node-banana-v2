@@ -58,9 +58,12 @@ const NODE_DIMENSIONS = {
   imageInput: { width: 300, height: 280 },
   annotation: { width: 300, height: 280 },
   prompt: { width: 320, height: 220 },
+  promptConstructor: { width: 340, height: 300 },
+  array: { width: 320, height: 360 },
   nanoBanana: { width: 300, height: 300 },
   llmGenerate: { width: 320, height: 360 },
   output: { width: 320, height: 320 },
+  outputGallery: { width: 360, height: 400 },
 };
 
 // Default node data factories
@@ -118,6 +121,20 @@ interface TemplateContent {
 }
 
 const TEMPLATE_CONTENT: Record<string, Record<ContentLevel, TemplateContent>> = {
+  "kiosk-campaign": {
+    empty: {
+      prompts: {},
+      images: {},
+    },
+    minimal: {
+      prompts: {},
+      images: {},
+    },
+    full: {
+      prompts: {},
+      images: {},
+    },
+  },
   "product-shot": {
     empty: {
       prompts: { "prompt-1": "" },
@@ -249,8 +266,249 @@ const TEMPLATE_CONTENT: Record<string, Record<ContentLevel, TemplateContent>> = 
   },
 };
 
+const createOutputGalleryData = () => ({
+  images: [],
+});
+
+const createPromptConstructorData = (template: string = "") => ({
+  template,
+  outputText: null,
+  unresolvedVars: [],
+});
+
+const createArrayData = () => ({
+  inputText: null,
+  splitMode: "delimiter" as const,
+  delimiter: "*",
+  regexPattern: "",
+  trimItems: true,
+  removeEmpty: true,
+  batchMode: false,
+  selectedOutputIndex: null,
+  outputItems: [],
+  outputText: null,
+  error: null,
+});
+
+// Visual Bible system prompt (fixed, not editable by user)
+const VISUAL_BIBLE_SYSTEM_PROMPT =
+  "You have been given a brand's images. Create a visual guide that can be used to produce more visuals in the style of this brand.";
+
+// Creative Director system prompt (fixed)
+const CREATIVE_DIRECTOR_SYSTEM_PROMPT = `You are a professional magazine photographer who specialises in creating art directed prompts for AI image generators such as Nano Banana Pro.
+
+You will be given an idea for a prompt and an image of a product.
+
+Your task is to generate 10 diverse, high-end prompts for image generation.
+
+Take the user prompt into high account when creating your new prompts.
+
+FORMAT:
+- Separate each prompt by a *
+- Output as a list: prompt1* prompt2* prompt3*
+- No additional context, commentary, thoughts, analysis (just the raw prompts)`;
+
+// Prompt Constructor template — concatenates system prompt + Visual Bible output
+const PROMPT_CONSTRUCTOR_TEMPLATE = `@system_prompt
+
+Here is the visual style guide for this brand:
+
+@visual_bible`;
+
 // Preset templates
 export const PRESET_TEMPLATES: PresetTemplate[] = [
+  {
+    id: "kiosk-campaign",
+    name: "Kiosk Campaign",
+    description: "10 brand images → Visual Bible → Creative Director → 10 product shots",
+    icon: "M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10",
+    category: "advanced",
+    tags: ["Gemini", "Kiosk"],
+    workflow: {
+      version: 1,
+      name: "Kiosk Campaign",
+      edgeStyle: "curved",
+      nodes: [
+        // ── Phase 1: Visual Bible — 10 brand image inputs (5×2 grid) ──
+        ...Array.from({ length: 10 }, (_, i) => {
+          const col = i % 2;
+          const row = Math.floor(i / 2);
+          return {
+            id: `brand-${i + 1}`,
+            type: "imageInput" as const,
+            position: { x: 50 + col * 320, y: 50 + row * 300 },
+            data: createImageInputData(),
+            style: NODE_DIMENSIONS.imageInput,
+          };
+        }),
+        // Visual Bible system prompt (fixed)
+        {
+          id: "vb-system",
+          type: "prompt" as const,
+          position: { x: 50, y: 1570 },
+          data: createPromptData(VISUAL_BIBLE_SYSTEM_PROMPT),
+          style: { ...NODE_DIMENSIONS.prompt, height: 280 },
+        },
+        // Visual Bible LLM (Gemini 3 Pro with vision)
+        {
+          id: "visual-bible",
+          type: "llmGenerate" as const,
+          position: { x: 720, y: 600 },
+          data: {
+            ...createLLMGenerateData(),
+            model: "gemini-3-pro-preview" as const,
+            maxTokens: 4096,
+            customTitle: "Visual Bible",
+          },
+          style: NODE_DIMENSIONS.llmGenerate,
+        },
+
+        // ── Phase 2: Creative Director ──
+        // Product image input
+        {
+          id: "product",
+          type: "imageInput" as const,
+          position: { x: 50, y: 1920 },
+          data: createImageInputData(),
+          style: NODE_DIMENSIONS.imageInput,
+        },
+        // User prompt (loose description of desired output)
+        {
+          id: "user-prompt",
+          type: "prompt" as const,
+          position: { x: 50, y: 2260 },
+          data: createPromptData("messy bathroom image with the product on the bench top"),
+          style: NODE_DIMENSIONS.prompt,
+        },
+        // System prompt for Creative Director (named variable)
+        {
+          id: "cd-system",
+          type: "prompt" as const,
+          position: { x: 50, y: 2540 },
+          data: {
+            ...createPromptData(CREATIVE_DIRECTOR_SYSTEM_PROMPT),
+            variableName: "system_prompt",
+          },
+          style: { ...NODE_DIMENSIONS.prompt, height: 380 },
+        },
+        // Prompt Constructor — concatenates cd-system + Visual Bible output
+        {
+          id: "concat",
+          type: "promptConstructor" as const,
+          position: { x: 1120, y: 1920 },
+          data: createPromptConstructorData(PROMPT_CONSTRUCTOR_TEMPLATE),
+          style: NODE_DIMENSIONS.promptConstructor,
+        },
+        // Creative Director LLM
+        {
+          id: "creative-director",
+          type: "llmGenerate" as const,
+          position: { x: 1520, y: 1920 },
+          data: {
+            ...createLLMGenerateData(),
+            model: "gemini-3-pro-preview" as const,
+            maxTokens: 8192,
+            customTitle: "Creative Director",
+          },
+          style: NODE_DIMENSIONS.llmGenerate,
+        },
+
+        // ── Phase 3: Split & Generate ──
+        // Array node — splits Creative Director output by "*"
+        {
+          id: "prompts-array",
+          type: "array" as const,
+          position: { x: 1920, y: 1920 },
+          data: createArrayData(),
+          style: NODE_DIMENSIONS.array,
+        },
+      ],
+      edges: [
+        // ── Phase 1: brand images → Visual Bible ──
+        ...Array.from({ length: 10 }, (_, i) => ({
+          id: `edge-brand-${i + 1}-vb`,
+          source: `brand-${i + 1}`,
+          sourceHandle: "image",
+          target: "visual-bible",
+          targetHandle: "image",
+        })),
+        // vb-system prompt → Visual Bible (text input)
+        {
+          id: "edge-vb-system-vb",
+          source: "vb-system",
+          sourceHandle: "text",
+          target: "visual-bible",
+          targetHandle: "text",
+        },
+
+        // ── Phase 2: Prompt Constructor ──
+        // cd-system → concat (text input)
+        {
+          id: "edge-cd-system-concat",
+          source: "cd-system",
+          sourceHandle: "text",
+          target: "concat",
+          targetHandle: "text",
+        },
+        // Visual Bible output → concat (text input — <var> tags parsed)
+        {
+          id: "edge-vb-concat",
+          source: "visual-bible",
+          sourceHandle: "text",
+          target: "concat",
+          targetHandle: "text",
+        },
+        // Prompt Constructor → Creative Director (system prompt)
+        {
+          id: "edge-concat-cd",
+          source: "concat",
+          sourceHandle: "text",
+          target: "creative-director",
+          targetHandle: "text",
+        },
+        // Product image → Creative Director
+        {
+          id: "edge-product-cd",
+          source: "product",
+          sourceHandle: "image",
+          target: "creative-director",
+          targetHandle: "image",
+        },
+
+        // ── Phase 3: Creative Director → Array ──
+        {
+          id: "edge-cd-array",
+          source: "creative-director",
+          sourceHandle: "text",
+          target: "prompts-array",
+          targetHandle: "text",
+        },
+      ],
+      groups: {
+        "group-phase1": {
+          id: "group-phase1",
+          name: "Step 1: Visual Bible — Upload brand images",
+          color: "blue",
+          position: { x: 20, y: 20 },
+          size: { width: 1380, height: 1880 },
+        },
+        "group-phase2": {
+          id: "group-phase2",
+          name: "Step 2: Creative Director — Upload product + write prompt",
+          color: "purple",
+          position: { x: 20, y: 1890 },
+          size: { width: 2260, height: 1080 },
+        },
+        "group-phase3": {
+          id: "group-phase3",
+          name: "Step 3: Click \"Auto-route\" on Array node → generates 10 image branches",
+          color: "green",
+          position: { x: 1890, y: 1890 },
+          size: { width: 380, height: 1080 },
+        },
+      },
+    },
+  },
   {
     id: "product-shot",
     name: "Product Shot",

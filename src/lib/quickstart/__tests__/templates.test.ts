@@ -30,12 +30,13 @@ describe("templates", () => {
   });
 
   describe("PRESET_TEMPLATES", () => {
-    it("should have 6 preset templates", () => {
-      expect(PRESET_TEMPLATES).toHaveLength(6);
+    it("should have 7 preset templates", () => {
+      expect(PRESET_TEMPLATES).toHaveLength(7);
     });
 
     it("should have all required template IDs", () => {
       const templateIds = PRESET_TEMPLATES.map((t) => t.id);
+      expect(templateIds).toContain("kiosk-campaign");
       expect(templateIds).toContain("product-shot");
       expect(templateIds).toContain("model-product");
       expect(templateIds).toContain("color-variations");
@@ -66,8 +67,8 @@ describe("templates", () => {
       });
     });
 
-    it("each template should have at least one nanoBanana node", () => {
-      PRESET_TEMPLATES.forEach((template) => {
+    it("each template should have at least one nanoBanana node (except kiosk-campaign which uses auto-route)", () => {
+      PRESET_TEMPLATES.filter((t) => t.id !== "kiosk-campaign").forEach((template) => {
         const nanoBananaNodes = template.workflow.nodes.filter(
           (n) => n.type === "nanoBanana"
         );
@@ -75,8 +76,8 @@ describe("templates", () => {
       });
     });
 
-    it("each template should have at least one output node", () => {
-      PRESET_TEMPLATES.forEach((template) => {
+    it("each template should have at least one output node (except kiosk-campaign which uses auto-route)", () => {
+      PRESET_TEMPLATES.filter((t) => t.id !== "kiosk-campaign").forEach((template) => {
         const outputNodes = template.workflow.nodes.filter(
           (n) => n.type === "output"
         );
@@ -96,9 +97,9 @@ describe("templates", () => {
   });
 
   describe("getAllPresets", () => {
-    it("should return all 6 presets", () => {
+    it("should return all 7 presets", () => {
       const presets = getAllPresets();
-      expect(presets).toHaveLength(6);
+      expect(presets).toHaveLength(7);
     });
 
     it("should return only display properties", () => {
