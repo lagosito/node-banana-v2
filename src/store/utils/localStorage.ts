@@ -69,6 +69,18 @@ export const saveSaveConfig = (config: WorkflowSaveConfig): void => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(configs));
 };
 
+// Get boards (save configs) for a specific client
+export const getBoardsForClient = (clientId: string): WorkflowSaveConfig[] => {
+  const configs = loadSaveConfigs();
+  return Object.values(configs).filter((c) => c.clientId === clientId);
+};
+
+// Get all boards that have client association
+export const getAllClientBoards = (): WorkflowSaveConfig[] => {
+  const configs = loadSaveConfigs();
+  return Object.values(configs).filter((c) => c.clientId);
+};
+
 // Cost data helpers
 export const loadWorkflowCostData = (workflowId: string): WorkflowCostData | null => {
   if (typeof window === "undefined") return null;

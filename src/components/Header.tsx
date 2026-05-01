@@ -233,6 +233,14 @@ export function Header() {
             🎯 Campaigns
           </a>
 
+          <a
+            href="/clients"
+            className="px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors bg-[var(--c-bg-elevated)] text-[var(--c-text-secondary)] hover:bg-[var(--c-bg-hover)] border border-[var(--c-border)]"
+            title="Open Client Boards"
+          >
+            📋 Clients
+          </a>
+
           <div className="flex items-center gap-2 ml-4 pl-4 theme-divider border-l">
             {isProjectConfigured ? (
               <>

@@ -277,6 +277,7 @@ interface WorkflowStore {
   // Save/Load
   saveWorkflow: (name?: string) => void;
   loadWorkflow: (workflow: WorkflowFile, workflowPath?: string, options?: { preserveSnapshot?: boolean }) => Promise<void>;
+  loadFromBoard: (board: { id: string; boardName: string; clientId: string; clientName: string; workflowPath?: string; status?: string; brandDna?: { primaryColor?: string; brandTone?: string; brandEssence?: string } }) => Promise<void>;
   clearWorkflow: () => void;
 
   // Helpers
@@ -2049,6 +2050,116 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
     syncUndoFlags(set);
 
     // Recompute dimming after loading workflow
+    get().recomputeDimmedNodes();
+  },
+
+  loadFromBoard: async (board: {
+    id: string;
+    boardName: string;
+    clientId: string;
+    clientName: string;
+    workflowPath?: string;
+    status?: string;
+    brandDna?: { primaryColor?: string; brandTone?: string; brandEssence?: string };
+  }) => {
+    const { loadWorkflow } = get();
+
+    // If board has an existing workflow on disk, load it
+    if (board.workflowPath) {
+      try {
+        const res = await fetch("/api/workflow", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: board.workflowPath }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.workflow) {
+            await loadWorkflow(data.workflow, board.workflowPath);
+            // Tag the save config with client/board info
+            const workflowId = get().workflowId;
+            if (workflowId) {
+              saveSaveConfig({
+                workflowId,
+                name: board.boardName,
+                directoryPath: board.workflowPath,
+                generationsPath: null,
+                lastSavedAt: Date.now(),
+                useExternalImageStorage: true,
+                clientId: board.clientId,
+                boardId: board.id,
+                clientName: board.clientName,
+              });
+            }
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn("[loadFromBoard] Failed to load workflow from disk, creating from template:", e);
+      }
+    }
+
+    // No existing workflow — create from Kiosk template
+    const { createKioskContentTemplate } = await import(
+      "@/lib/workflowTemplates/kioskContentTemplate"
+    );
+    const template = createKioskContentTemplate(board.brandDna);
+
+    // Create a new project with the template content
+    const workflowId = generateWorkflowId();
+    const now = Date.now();
+
+    set({
+      nodes: template.nodes.map((n) => ({ ...n, selected: false })),
+      edges: template.edges,
+      groups: {
+        "group-brand": {
+          id: "group-brand",
+          name: "Brand References",
+          color: "blue" as any,
+          position: { x: 0, y: 0 },
+          size: { width: 1100, height: 250 },
+        },
+        "group-product": {
+          id: "group-product",
+          name: "Product",
+          color: "green" as any,
+          position: { x: 0, y: 320 },
+          size: { width: 500, height: 250 },
+        },
+        "group-generation": {
+          id: "group-generation",
+          name: "Generation",
+          color: "purple" as any,
+          position: { x: 0, y: 640 },
+          size: { width: 500, height: 350 },
+        },
+      },
+      workflowId,
+      workflowName: board.boardName,
+      saveDirectoryPath: null,
+      generationsPath: null,
+      lastSavedAt: null,
+      hasUnsavedChanges: true,
+      isRunning: false,
+      currentNodeIds: [],
+      showQuickstart: false,
+    });
+
+    // Save config with client/board association
+    saveSaveConfig({
+      workflowId,
+      name: board.boardName,
+      directoryPath: "",
+      generationsPath: null,
+      lastSavedAt: now,
+      useExternalImageStorage: true,
+      clientId: board.clientId,
+      boardId: board.id,
+      clientName: board.clientName,
+    });
+
+    get().clearSnapshot();
     get().recomputeDimmedNodes();
   },
 

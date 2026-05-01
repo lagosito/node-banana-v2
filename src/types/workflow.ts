@@ -24,6 +24,10 @@ export interface WorkflowSaveConfig {
   generationsPath: string | null;
   lastSavedAt: number | null;
   useExternalImageStorage?: boolean;  // Whether to store images as files vs embedded base64
+  // El Kiosk client/board association
+  clientId?: string;    // Airtable client record ID
+  boardId?: string;     // Airtable board record ID
+  clientName?: string;  // Denormalized for display
 }
 
 // Cost tracking data stored per-workflow in localStorage
