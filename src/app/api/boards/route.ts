@@ -16,23 +16,24 @@ export interface BoardInfo {
   clientId: string;
   clientName: string;
   status: string;
-  workflowPath: string;
   notes: string;
   createdAt: string | null;
   updatedAt: string | null;
+  hasWorkflowData: boolean;
 }
 
 function mapRecord(r: BoardRecord): BoardInfo {
+  const workflowData = r.fields["Workflow Data"];
   return {
     id: r.id,
     boardName: String(r.fields["Board Name"] || ""),
     clientId: String(r.fields["Client ID"] || ""),
     clientName: String(r.fields["Client Name"] || ""),
     status: String(r.fields["Status"] || "draft"),
-    workflowPath: String(r.fields["Workflow Path"] || ""),
     notes: String(r.fields["Notes"] || ""),
     createdAt: r.fields["Created At"] ? String(r.fields["Created At"]) : null,
     updatedAt: r.fields["Updated At"] ? String(r.fields["Updated At"]) : null,
+    hasWorkflowData: !!workflowData && String(workflowData).length > 10,
   };
 }
 
@@ -80,10 +81,12 @@ async function fetchAllBoards(filterFormula?: string): Promise<BoardInfo[]> {
 }
 
 // GET /api/boards?clientId=recXXX&search=term
+// GET /api/boards?id=recXXX  (returns full board WITH workflow data)
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const clientId = searchParams.get("clientId");
   const search = searchParams.get("search");
+  const id = searchParams.get("id");
 
   if (!BOARDS_TABLE_ID) {
     return NextResponse.json(
@@ -93,6 +96,23 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    // Single board fetch (with workflow data)
+    if (id) {
+      const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${BOARDS_TABLE_ID}/${id}`;
+      const data = await airtableFetch(url);
+      const board = mapRecord(data);
+      let workflowData = null;
+      if (data.fields["Workflow Data"]) {
+        try {
+          workflowData = JSON.parse(String(data.fields["Workflow Data"]));
+        } catch {
+          // invalid JSON
+        }
+      }
+      return NextResponse.json({ board, workflowData });
+    }
+
+    // List boards
     let filterFormula: string | undefined;
     if (clientId) {
       filterFormula = `{Client ID}="${clientId}"`;
@@ -127,7 +147,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { boardName, clientId, clientName, status, workflowPath, notes } = body;
+    const { boardName, clientId, clientName, status, notes, workflowData } =
+      body;
 
     if (!boardName || !clientId || !clientName) {
       return NextResponse.json(
@@ -138,20 +159,27 @@ export async function POST(request: NextRequest) {
 
     const now = new Date().toISOString();
     const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${BOARDS_TABLE_ID}`;
+    const fields: Record<string, unknown> = {
+      "Board Name": boardName,
+      "Client ID": clientId,
+      "Client Name": clientName,
+      Status: status || "draft",
+      Notes: notes || "",
+      "Created At": now,
+      "Updated At": now,
+    };
+
+    // Store workflow JSON if provided
+    if (workflowData) {
+      fields["Workflow Data"] =
+        typeof workflowData === "string"
+          ? workflowData
+          : JSON.stringify(workflowData);
+    }
+
     const data = await airtableFetch(url, {
       method: "POST",
-      body: JSON.stringify({
-        fields: {
-          "Board Name": boardName,
-          "Client ID": clientId,
-          "Client Name": clientName,
-          Status: status || "draft",
-          "Workflow Path": workflowPath || "",
-          Notes: notes || "",
-          "Created At": now,
-          "Updated At": now,
-        },
-      }),
+      body: JSON.stringify({ fields }),
     });
 
     return NextResponse.json({
@@ -161,10 +189,10 @@ export async function POST(request: NextRequest) {
         clientId,
         clientName,
         status: status || "draft",
-        workflowPath: workflowPath || "",
         notes: notes || "",
         createdAt: now,
         updatedAt: now,
+        hasWorkflowData: !!workflowData,
       },
     });
   } catch (err) {
@@ -173,7 +201,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PATCH /api/boards — update a board
+// PATCH /api/boards — update a board (metadata or workflow data)
 export async function PATCH(request: NextRequest) {
   if (!BOARDS_TABLE_ID) {
     return NextResponse.json(
@@ -184,7 +212,7 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { id, ...fields } = body;
+    const { id, workflowData, ...fields } = body;
 
     if (!id) {
       return NextResponse.json({ error: "id is required" }, { status: 400 });
@@ -195,9 +223,15 @@ export async function PATCH(request: NextRequest) {
     };
     if (fields.boardName) updateFields["Board Name"] = fields.boardName;
     if (fields.status) updateFields["Status"] = fields.status;
-    if (fields.workflowPath !== undefined)
-      updateFields["Workflow Path"] = fields.workflowPath;
     if (fields.notes !== undefined) updateFields["Notes"] = fields.notes;
+
+    // Update workflow data if provided
+    if (workflowData !== undefined) {
+      updateFields["Workflow Data"] =
+        typeof workflowData === "string"
+          ? workflowData
+          : JSON.stringify(workflowData);
+    }
 
     const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${BOARDS_TABLE_ID}/${id}`;
     const data = await airtableFetch(url, {

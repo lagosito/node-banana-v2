@@ -30,6 +30,7 @@ interface BoardInfo {
   notes: string;
   createdAt: string | null;
   updatedAt: string | null;
+  hasWorkflowData: boolean;
 }
 
 const STATUS_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
@@ -114,6 +115,7 @@ export default function ClientDashboard() {
       clientName: board.clientName,
       workflowPath: board.workflowPath || undefined,
       status: board.status,
+      hasWorkflowData: board.hasWorkflowData,
       brandDna: selectedClient?.brandDna || undefined,
     });
     router.push("/");

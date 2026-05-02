@@ -96,6 +96,9 @@ export function Header() {
     shortcutsDialogOpen,
     setShortcutsDialogOpen,
     setShowQuickstart,
+    boardId,
+    boardClientName,
+    saveToBoard,
   } = useWorkflowStore(useShallow((state) => ({
     workflowName: state.workflowName,
     workflowId: state.workflowId,
@@ -111,6 +114,9 @@ export function Header() {
     shortcutsDialogOpen: state.shortcutsDialogOpen,
     setShortcutsDialogOpen: state.setShortcutsDialogOpen,
     setShowQuickstart: state.setShowQuickstart,
+    boardId: state.boardId,
+    boardClientName: state.boardClientName,
+    saveToBoard: state.saveToBoard,
   })));
 
   const [showProjectModal, setShowProjectModal] = useState(false);
@@ -261,6 +267,21 @@ export function Header() {
                       <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-red-500 ring-2 ring-[var(--c-header-bg)]" />
                     )}
                   </button>
+                  {boardId && (
+                    <button
+                      onClick={saveToBoard}
+                      disabled={isSaving}
+                      className="relative theme-btn-ghost p-1.5 rounded transition-colors disabled:opacity-50"
+                      title={isSaving ? "Saving..." : `Save to Airtable (${boardClientName || "board"})`}
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0 3 3m-3-3-3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.233-2.33 3 3 0 0 1 3.758 3.848A3.752 3.752 0 0 1 18 19.5H6.75Z" />
+                      </svg>
+                      {hasUnsavedChanges && !isSaving && (
+                        <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-blue-500 ring-2 ring-[var(--c-header-bg)]" />
+                      )}
+                    </button>
+                  )}
                   {saveDirectoryPath && (
                     <button onClick={handleOpenDirectory} className="theme-btn-ghost p-1.5 rounded transition-colors" title="Open project folder">
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

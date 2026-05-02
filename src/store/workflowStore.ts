@@ -277,7 +277,8 @@ interface WorkflowStore {
   // Save/Load
   saveWorkflow: (name?: string) => void;
   loadWorkflow: (workflow: WorkflowFile, workflowPath?: string, options?: { preserveSnapshot?: boolean }) => Promise<void>;
-  loadFromBoard: (board: { id: string; boardName: string; clientId: string; clientName: string; workflowPath?: string; status?: string; brandDna?: { primaryColor?: string; brandTone?: string; brandEssence?: string } }) => Promise<void>;
+  loadFromBoard: (board: { id: string; boardName: string; clientId: string; clientName: string; workflowPath?: string; status?: string; hasWorkflowData?: boolean; brandDna?: { primaryColor?: string; brandTone?: string; brandEssence?: string } }) => Promise<void>;
+  saveToBoard: () => Promise<void>;
   clearWorkflow: () => void;
 
   // Helpers
@@ -301,6 +302,10 @@ interface WorkflowStore {
   isSaving: boolean;
   useExternalImageStorage: boolean;  // Store images as separate files vs embedded base64
   imageRefBasePath: string | null;  // Directory from which current imageRefs are valid
+
+  // Board association (El Kiosk)
+  boardId: string | null;
+  boardClientName: string | null;
 
   // Auto-save actions
   setWorkflowMetadata: (id: string, name: string, path: string, generationsPath?: string | null) => void;
@@ -545,6 +550,10 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
   isSaving: false,
   useExternalImageStorage: true,  // Default: store images as separate files
   imageRefBasePath: null,  // Directory from which current imageRefs are valid
+
+  // Board association (El Kiosk)
+  boardId: null,
+  boardClientName: null,
 
   // Cost tracking initial state
   incurredCost: 0,
@@ -2060,11 +2069,44 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
     clientName: string;
     workflowPath?: string;
     status?: string;
+    hasWorkflowData?: boolean;
     brandDna?: { primaryColor?: string; brandTone?: string; brandEssence?: string };
   }) => {
     const { loadWorkflow } = get();
 
-    // If board has an existing workflow on disk, load it
+    // Track board association
+    set({ boardId: board.id, boardClientName: board.clientName });
+    // 1. Try loading workflow data from Airtable
+    if (board.hasWorkflowData) {
+      try {
+        const res = await fetch(`/api/boards?id=${board.id}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.workflowData) {
+            await loadWorkflow(data.workflow);
+            const workflowId = get().workflowId;
+            if (workflowId) {
+              saveSaveConfig({
+                workflowId,
+                name: board.boardName,
+                directoryPath: "",
+                generationsPath: null,
+                lastSavedAt: Date.now(),
+                useExternalImageStorage: true,
+                clientId: board.clientId,
+                boardId: board.id,
+                clientName: board.clientName,
+              });
+            }
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn("[loadFromBoard] Failed to load from Airtable, trying disk:", e);
+      }
+    }
+
+    // 2. Try loading from disk
     if (board.workflowPath) {
       try {
         const res = await fetch("/api/workflow", {
@@ -2076,7 +2118,6 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
           const data = await res.json();
           if (data.workflow) {
             await loadWorkflow(data.workflow, board.workflowPath);
-            // Tag the save config with client/board info
             const workflowId = get().workflowId;
             if (workflowId) {
               saveSaveConfig({
@@ -2095,17 +2136,16 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
           }
         }
       } catch (e) {
-        console.warn("[loadFromBoard] Failed to load workflow from disk, creating from template:", e);
+        console.warn("[loadFromBoard] Failed to load from disk, creating from template:", e);
       }
     }
 
-    // No existing workflow — create from Kiosk template
+    // 3. Create from Kiosk template
     const { createKioskContentTemplate } = await import(
       "@/lib/workflowTemplates/kioskContentTemplate"
     );
     const template = createKioskContentTemplate(board.brandDna);
 
-    // Create a new project with the template content
     const workflowId = generateWorkflowId();
     const now = Date.now();
 
@@ -2146,7 +2186,6 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
       showQuickstart: false,
     });
 
-    // Save config with client/board association
     saveSaveConfig({
       workflowId,
       name: board.boardName,
@@ -2161,6 +2200,43 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
 
     get().clearSnapshot();
     get().recomputeDimmedNodes();
+  },
+
+  saveToBoard: async () => {
+    const { nodes, edges, edgeStyle, groups, workflowName, boardId } = get();
+
+    if (!boardId) {
+      console.warn("[saveToBoard] No boardId — workflow not linked to a board");
+      return;
+    }
+
+    const workflow: WorkflowFile = {
+      version: 1,
+      name: workflowName || "untitled",
+      nodes: nodes.map(({ selected, ...rest }) => rest),
+      edges,
+      edgeStyle,
+      groups: groups && Object.keys(groups).length > 0 ? groups : undefined,
+    };
+
+    try {
+      const res = await fetch("/api/boards", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: boardId,
+          workflowData: JSON.stringify(workflow),
+        }),
+      });
+
+      if (res.ok) {
+        set({ hasUnsavedChanges: false, lastSavedAt: Date.now() });
+      } else {
+        console.error("[saveToBoard] Failed:", await res.text());
+      }
+    } catch (e) {
+      console.error("[saveToBoard] Error:", e);
+    }
   },
 
   clearWorkflow: () => {
@@ -2179,6 +2255,9 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
       hasUnsavedChanges: false,
       // Reset cost tracking
       incurredCost: 0,
+      // Reset board association
+      boardId: null,
+      boardClientName: null,
       // Reset imageRef tracking
       imageRefBasePath: null,
       // Reset viewed comments when clearing workflow
