@@ -2079,11 +2079,73 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
     // 1. Try loading workflow data from Airtable
     if (board.hasWorkflowData) {
       try {
-        const res = await fetch(`/api/boards?id=${board.id}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.workflowData) {
-            await loadWorkflow(data.workflowData);
+        const [boardRes, imagesRes] = await Promise.all([
+          fetch(`/api/boards?id=${board.id}`),
+          fetch(`/api/board-images?boardId=${board.id}`),
+        ]);
+
+        if (boardRes.ok) {
+          const boardData = await boardRes.json();
+          if (boardData.workflowData) {
+            await loadWorkflow(boardData.workflowData);
+
+            // Restore images into nodes
+            if (imagesRes.ok) {
+              const imgData = await imagesRes.json();
+              if (imgData.images && typeof imgData.images === "object") {
+                const currentNodes = get().nodes;
+                const IMAGE_FIELDS = ["image", "outputImage", "audioFile", "outputAudio", "video"];
+
+                const restoredNodes = currentNodes.map((node) => {
+                  const data = { ...node.data } as Record<string, unknown>;
+                  let modified = false;
+
+                  // Restore single image fields
+                  for (const field of IMAGE_FIELDS) {
+                    const key = `${node.id}:${field}`;
+                    if (imgData.images[key] && (data[field] === null || data[field] === undefined)) {
+                      data[field] = imgData.images[key];
+                      modified = true;
+                    }
+                  }
+
+                  // Check for array items: nodeId:inputImages[0], nodeId:inputImages[1], etc.
+                  const arrayItems: string[] = [];
+                  for (const [key, val] of Object.entries(imgData.images)) {
+                    const match = key.match(`^${node.id}:inputImages\\[(\\d+)\\]$`);
+                    if (match) {
+                      arrayItems[parseInt(match[1])] = val as string;
+                    }
+                  }
+                  if (arrayItems.length > 0) {
+                    data["inputImages"] = arrayItems;
+                    modified = true;
+                  }
+
+                  // Restore image history
+                  if (Array.isArray(data["imageHistory"])) {
+                    const history = [...(data["imageHistory"] as Array<Record<string, unknown>>)];
+                    let historyModified = false;
+                    for (let i = 0; i < history.length; i++) {
+                      const key = `${node.id}:imageHistory[${i}].image`;
+                      if (imgData.images[key]) {
+                        history[i] = { ...history[i], image: imgData.images[key] };
+                        historyModified = true;
+                      }
+                    }
+                    if (historyModified) {
+                      data["imageHistory"] = history;
+                      modified = true;
+                    }
+                  }
+
+                  return modified ? { ...node, data: data as typeof node.data } : node;
+                });
+
+                set({ nodes: restoredNodes });
+              }
+            }
+
             const workflowId = get().workflowId;
             if (workflowId) {
               saveSaveConfig({
@@ -2210,16 +2272,64 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
       return;
     }
 
-    const workflow: WorkflowFile = {
-      version: 1,
-      name: workflowName || "untitled",
-      nodes: nodes.map(({ selected, ...rest }) => rest),
-      edges,
-      edgeStyle,
-      groups: groups && Object.keys(groups).length > 0 ? groups : undefined,
-    };
+    set({ isSaving: true });
 
     try {
+      // Extract images from nodes before saving
+      const extractedImages: Record<string, string> = {};
+      const IMAGE_FIELDS = ["image", "outputImage", "audioFile", "outputAudio", "video"];
+      const IMAGE_ARRAY_FIELDS = ["inputImages"];
+
+      const strippedNodes = nodes.map((node) => {
+        const { selected, ...rest } = node;
+        const data = { ...rest.data } as Record<string, unknown>;
+
+        // Extract single image fields
+        for (const field of IMAGE_FIELDS) {
+          const val = data[field];
+          if (typeof val === "string" && val.startsWith("data:")) {
+            extractedImages[`${node.id}:${field}`] = val;
+            data[field] = null;
+          }
+        }
+
+        // Extract image arrays
+        for (const field of IMAGE_ARRAY_FIELDS) {
+          const arr = data[field];
+          if (Array.isArray(arr) && arr.length > 0) {
+            arr.forEach((item: string, idx: number) => {
+              if (typeof item === "string" && item.startsWith("data:")) {
+                extractedImages[`${node.id}:${field}[${idx}]`] = item;
+              }
+            });
+            data[field] = [];
+          }
+        }
+
+        // Extract image history
+        if (Array.isArray(data["imageHistory"]) && data["imageHistory"].length > 0) {
+          const history = data["imageHistory"] as Array<{ image?: string; [k: string]: unknown }>;
+          history.forEach((item, idx) => {
+            if (item.image && typeof item.image === "string" && item.image.startsWith("data:")) {
+              extractedImages[`${node.id}:imageHistory[${idx}].image`] = item.image;
+            }
+          });
+          data["imageHistory"] = history.map((h) => ({ ...h, image: null }));
+        }
+
+        return { ...rest, data };
+      });
+
+      const workflow = {
+        version: 1,
+        name: workflowName || "untitled",
+        nodes: strippedNodes,
+        edges,
+        edgeStyle,
+        groups: groups && Object.keys(groups).length > 0 ? groups : undefined,
+      };
+
+      // Save workflow structure to Airtable
       const res = await fetch("/api/boards", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -2229,13 +2339,28 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
         }),
       });
 
-      if (res.ok) {
-        set({ hasUnsavedChanges: false, lastSavedAt: Date.now() });
-      } else {
-        console.error("[saveToBoard] Failed:", await res.text());
+      if (!res.ok) {
+        console.error("[saveToBoard] Failed to save workflow:", await res.text());
+        return;
       }
+
+      // Save images separately if any
+      if (Object.keys(extractedImages).length > 0) {
+        const imgRes = await fetch("/api/board-images", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ boardId, images: extractedImages }),
+        });
+        if (!imgRes.ok) {
+          console.error("[saveToBoard] Failed to save images:", await imgRes.text());
+        }
+      }
+
+      set({ hasUnsavedChanges: false, lastSavedAt: Date.now() });
     } catch (e) {
       console.error("[saveToBoard] Error:", e);
+    } finally {
+      set({ isSaving: false });
     }
   },
 
