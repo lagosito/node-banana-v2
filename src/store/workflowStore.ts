@@ -2083,7 +2083,7 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
         if (res.ok) {
           const data = await res.json();
           if (data.workflowData) {
-            await loadWorkflow(data.workflow);
+            await loadWorkflow(data.workflowData);
             const workflowId = get().workflowId;
             if (workflowId) {
               saveSaveConfig({
@@ -2553,17 +2553,19 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
 
     autoSaveIntervalId = setInterval(async () => {
       const state = get();
-      if (
-        state.autoSaveEnabled &&
-        state.hasUnsavedChanges &&
-        state.workflowId &&
-        state.workflowName &&
-        state.saveDirectoryPath &&
-        !state.isSaving
-      ) {
+      if (!state.autoSaveEnabled || !state.hasUnsavedChanges || state.isSaving) return;
+
+      // Board auto-save → Airtable (every 30s for more responsive saves)
+      if (state.boardId) {
+        await state.saveToBoard();
+        return;
+      }
+
+      // File auto-save → disk
+      if (state.workflowId && state.workflowName && state.saveDirectoryPath) {
         await state.saveToFile();
       }
-    }, 90 * 1000); // 90 seconds
+    }, 30 * 1000); // 30 seconds
   },
 
   cleanupAutoSave: () => {
