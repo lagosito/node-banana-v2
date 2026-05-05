@@ -136,7 +136,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/boards — create a new board
+// POST /api/boards — create a new board OR update if id is provided (for sendBeacon)
 export async function POST(request: NextRequest) {
   if (!BOARDS_TABLE_ID) {
     return NextResponse.json(
@@ -147,6 +147,26 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+
+    // If id is provided, this is an update (e.g. from sendBeacon on page close)
+    if (body.id) {
+      const updateFields: Record<string, unknown> = {
+        "Updated At": new Date().toISOString(),
+      };
+      if (body.workflowData !== undefined) {
+        updateFields["Workflow Data"] =
+          typeof body.workflowData === "string"
+            ? body.workflowData
+            : JSON.stringify(body.workflowData);
+      }
+      const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${BOARDS_TABLE_ID}/${body.id}`;
+      await airtableFetch(url, {
+        method: "PATCH",
+        body: JSON.stringify({ fields: updateFields }),
+      });
+      return NextResponse.json({ success: true });
+    }
+
     const { boardName, clientId, clientName, status, notes, workflowData } =
       body;
 
