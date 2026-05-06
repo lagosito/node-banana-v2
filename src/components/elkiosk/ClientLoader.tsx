@@ -74,10 +74,12 @@ export function ClientLoader() {
   const [loadingWorkflow, setLoadingWorkflow] = useState(false);
   const [workflowError, setWorkflowError] = useState<string | null>(null);
 
-  const { nodes, updateNodeData, loadWorkflow } = useWorkflowStore(useShallow((state) => ({
+  const { nodes, updateNodeData, loadWorkflow, setBoardAssociation, markAsUnsaved } = useWorkflowStore(useShallow((state) => ({
     nodes: state.nodes,
     updateNodeData: state.updateNodeData,
     loadWorkflow: state.loadWorkflow,
+    setBoardAssociation: state.setBoardAssociation,
+    markAsUnsaved: state.markAsUnsaved,
   })));
 
   useEffect(() => {
@@ -124,13 +126,42 @@ export function ClientLoader() {
       } else {
         injectBrandDNA(client);
       }
+
+      // Create a board in Airtable so auto-save works
+      try {
+        const boardName = `${client.clientName} — ${selectedTier.charAt(0).toUpperCase() + selectedTier.slice(1)}`;
+        // Find Airtable record ID from the clients list
+        const clientEntry = clients.find(c => c.clientName === selectedName);
+        const clientId = clientEntry?.id || selectedName;
+        const boardRes = await fetch("/api/boards", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            boardName,
+            clientId,
+            clientName: client.clientName,
+            status: "draft",
+          }),
+        });
+        if (boardRes.ok) {
+          const boardData = await boardRes.json();
+          if (boardData.board?.id) {
+            setBoardAssociation(boardData.board.id, client.clientName);
+            // Trigger initial save so workflow is persisted in Airtable
+            markAsUnsaved();
+          }
+        }
+      } catch (boardErr) {
+        console.warn("[ClientLoader] Failed to create board (non-fatal):", boardErr);
+      }
+
       setIsOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setLoadingClient(false);
     }
-  }, [selectedName, selectedTier, loadWorkflow, injectBrandDNA]);
+  }, [selectedName, selectedTier, clients, loadWorkflow, injectBrandDNA, setBoardAssociation, markAsUnsaved]);
 
   const handleInjectOnly = useCallback(async () => {
     if (!selectedName) return;

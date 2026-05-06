@@ -307,6 +307,9 @@ interface WorkflowStore {
   boardId: string | null;
   boardClientName: string | null;
 
+  // Board association setter (El Kiosk)
+  setBoardAssociation: (boardId: string, clientName: string) => void;
+
   // Auto-save actions
   setWorkflowMetadata: (id: string, name: string, path: string, generationsPath?: string | null) => void;
   setWorkflowName: (name: string) => void;
@@ -2419,6 +2422,10 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
   },
 
   // Auto-save actions
+  setBoardAssociation: (boardId: string, clientName: string) => {
+    set({ boardId, boardClientName: clientName });
+  },
+
   setWorkflowMetadata: (id: string, name: string, path: string, generationsPath?: string | null) => {
     // Auto-derive generationsPath: use provided value, fall back to existing, then auto-derive
     const currentGenPath = get().generationsPath;
