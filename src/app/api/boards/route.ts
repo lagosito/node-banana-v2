@@ -1,14 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
-
-const AIRTABLE_BASE_ID = "appuXgF7lJxG52Tqd";
-const BOARDS_TABLE_ID = process.env.AIRTABLE_BOARDS_TABLE_ID || "";
-
-interface BoardRecord {
-  id: string;
-  fields: Record<string, unknown>;
-}
 
 export interface BoardInfo {
   id: string;
@@ -22,103 +15,61 @@ export interface BoardInfo {
   hasWorkflowData: boolean;
 }
 
-function mapRecord(r: BoardRecord): BoardInfo {
-  const workflowData = r.fields["Workflow Data"];
+function mapRow(row: Record<string, unknown>): BoardInfo {
+  const wf = row.workflow_data;
   return {
-    id: r.id,
-    boardName: String(r.fields["Board Name"] || ""),
-    clientId: String(r.fields["Client ID"] || ""),
-    clientName: String(r.fields["Client Name"] || ""),
-    status: String(r.fields["Status"] || "draft"),
-    notes: String(r.fields["Notes"] || ""),
-    createdAt: r.fields["Created At"] ? String(r.fields["Created At"]) : null,
-    updatedAt: r.fields["Updated At"] ? String(r.fields["Updated At"]) : null,
-    hasWorkflowData: !!workflowData && String(workflowData).length > 10,
+    id: String(row.id),
+    boardName: String(row.board_name || ""),
+    clientId: String(row.client_id || ""),
+    clientName: String(row.client_name || ""),
+    status: String(row.status || "draft"),
+    notes: String(row.notes || ""),
+    createdAt: row.created_at ? String(row.created_at) : null,
+    updatedAt: row.updated_at ? String(row.updated_at) : null,
+    hasWorkflowData: !!wf && (typeof wf === "object" ? Object.keys(wf).length > 0 : String(wf).length > 10),
   };
 }
 
-async function airtableFetch(url: string, options?: RequestInit) {
-  const apiKey = process.env.AIRTABLE_API_KEY;
-  if (!apiKey) throw new Error("AIRTABLE_API_KEY not configured");
-
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Airtable error ${res.status}: ${err}`);
-  }
-  return res.json();
-}
-
-async function fetchAllBoards(filterFormula?: string): Promise<BoardInfo[]> {
-  const all: BoardRecord[] = [];
-  let offset: string | undefined;
-  let safety = 0;
-
-  do {
-    const params = new URLSearchParams();
-    if (filterFormula) params.set("filterByFormula", filterFormula);
-    params.set("sort[0][field]", "Updated At");
-    params.set("sort[0][direction]", "desc");
-    params.set("pageSize", "100");
-    if (offset) params.set("offset", offset);
-
-    const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${BOARDS_TABLE_ID}?${params}`;
-    const data = await airtableFetch(url);
-    if (Array.isArray(data.records)) all.push(...data.records);
-    offset = data.offset;
-    safety++;
-  } while (offset && safety < 20);
-
-  return all.map(mapRecord);
-}
-
-// GET /api/boards?clientId=recXXX&search=term
-// GET /api/boards?id=recXXX  (returns full board WITH workflow data)
+// GET /api/boards?clientId=xxx&search=term
+// GET /api/boards?id=xxx  (returns full board WITH workflow data)
 export async function GET(request: NextRequest) {
+  if (!isSupabaseConfigured()) {
+    return NextResponse.json({ error: "Supabase not configured" }, { status: 500 });
+  }
+
   const { searchParams } = new URL(request.url);
   const clientId = searchParams.get("clientId");
   const search = searchParams.get("search");
   const id = searchParams.get("id");
 
-  if (!BOARDS_TABLE_ID) {
-    return NextResponse.json(
-      { error: "AIRTABLE_BOARDS_TABLE_ID not configured" },
-      { status: 500 }
-    );
-  }
-
   try {
-    // Single board fetch (with workflow data)
     if (id) {
-      const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${BOARDS_TABLE_ID}/${id}`;
-      const data = await airtableFetch(url);
-      const board = mapRecord(data);
-      let workflowData = null;
-      if (data.fields["Workflow Data"]) {
-        try {
-          workflowData = JSON.parse(String(data.fields["Workflow Data"]));
-        } catch {
-          // invalid JSON
-        }
-      }
-      return NextResponse.json({ board, workflowData });
+      const { data, error } = await getSupabase()
+        .from("boards")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (error) throw error;
+      if (!data) return NextResponse.json({ error: "Board not found" }, { status: 404 });
+
+      const board = mapRow(data);
+      return NextResponse.json({ board, workflowData: data.workflow_data || null });
     }
 
-    // List boards
-    let filterFormula: string | undefined;
+    let query = getSupabase()
+      .from("boards")
+      .select("id, board_name, client_id, client_name, status, notes, workflow_data, created_at, updated_at")
+      .order("updated_at", { ascending: false });
+
     if (clientId) {
-      filterFormula = `{Client ID}="${clientId}"`;
+      query = query.eq("client_id", clientId);
     }
 
-    let boards = await fetchAllBoards(filterFormula);
+    const { data, error } = await query;
+    if (error) throw error;
+
+    let boards = (data || []).map(mapRow);
 
     if (search) {
       const q = search.toLowerCase();
@@ -138,37 +89,33 @@ export async function GET(request: NextRequest) {
 
 // POST /api/boards — create a new board OR update if id is provided (for sendBeacon)
 export async function POST(request: NextRequest) {
-  if (!BOARDS_TABLE_ID) {
-    return NextResponse.json(
-      { error: "AIRTABLE_BOARDS_TABLE_ID not configured" },
-      { status: 500 }
-    );
+  if (!isSupabaseConfigured()) {
+    return NextResponse.json({ error: "Supabase not configured" }, { status: 500 });
   }
 
   try {
     const body = await request.json();
 
-    // If id is provided, this is an update (e.g. from sendBeacon on page close)
     if (body.id) {
       const updateFields: Record<string, unknown> = {
-        "Updated At": new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       };
       if (body.workflowData !== undefined) {
-        updateFields["Workflow Data"] =
-          typeof body.workflowData === "string"
-            ? body.workflowData
-            : JSON.stringify(body.workflowData);
+        updateFields["workflow_data"] = typeof body.workflowData === "string"
+          ? JSON.parse(body.workflowData)
+          : body.workflowData;
       }
-      const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${BOARDS_TABLE_ID}/${body.id}`;
-      await airtableFetch(url, {
-        method: "PATCH",
-        body: JSON.stringify({ fields: updateFields }),
-      });
+
+      const { error } = await getSupabase()
+        .from("boards")
+        .update(updateFields)
+        .eq("id", body.id);
+
+      if (error) throw error;
       return NextResponse.json({ success: true });
     }
 
-    const { boardName, clientId, clientName, status, notes, workflowData } =
-      body;
+    const { boardName, clientId, clientName, status, notes, workflowData } = body;
 
     if (!boardName || !clientId || !clientName) {
       return NextResponse.json(
@@ -178,42 +125,32 @@ export async function POST(request: NextRequest) {
     }
 
     const now = new Date().toISOString();
-    const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${BOARDS_TABLE_ID}`;
-    const fields: Record<string, unknown> = {
-      "Board Name": boardName,
-      "Client ID": clientId,
-      "Client Name": clientName,
-      Status: status || "draft",
-      Notes: notes || "",
-      "Created At": now,
-      "Updated At": now,
+    const insertData: Record<string, unknown> = {
+      board_name: boardName,
+      client_id: clientId,
+      client_name: clientName,
+      status: status || "draft",
+      notes: notes || "",
+      created_at: now,
+      updated_at: now,
     };
 
-    // Store workflow JSON if provided
     if (workflowData) {
-      fields["Workflow Data"] =
-        typeof workflowData === "string"
-          ? workflowData
-          : JSON.stringify(workflowData);
+      insertData.workflow_data = typeof workflowData === "string"
+        ? JSON.parse(workflowData)
+        : workflowData;
     }
 
-    const data = await airtableFetch(url, {
-      method: "POST",
-      body: JSON.stringify({ fields }),
-    });
+    const { data, error } = await getSupabase()
+      .from("boards")
+      .insert(insertData)
+      .select()
+      .single();
+
+    if (error) throw error;
 
     return NextResponse.json({
-      board: {
-        id: data.id,
-        boardName,
-        clientId,
-        clientName,
-        status: status || "draft",
-        notes: notes || "",
-        createdAt: now,
-        updatedAt: now,
-        hasWorkflowData: !!workflowData,
-      },
+      board: mapRow(data),
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Failed to create board";
@@ -223,11 +160,8 @@ export async function POST(request: NextRequest) {
 
 // PATCH /api/boards — update a board (metadata or workflow data)
 export async function PATCH(request: NextRequest) {
-  if (!BOARDS_TABLE_ID) {
-    return NextResponse.json(
-      { error: "AIRTABLE_BOARDS_TABLE_ID not configured" },
-      { status: 500 }
-    );
+  if (!isSupabaseConfigured()) {
+    return NextResponse.json({ error: "Supabase not configured" }, { status: 500 });
   }
 
   try {
@@ -239,35 +173,40 @@ export async function PATCH(request: NextRequest) {
     }
 
     const updateFields: Record<string, unknown> = {
-      "Updated At": new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     };
-    if (fields.boardName) updateFields["Board Name"] = fields.boardName;
-    if (fields.status) updateFields["Status"] = fields.status;
-    if (fields.notes !== undefined) updateFields["Notes"] = fields.notes;
+    if (fields.boardName) updateFields.board_name = fields.boardName;
+    if (fields.status) updateFields.status = fields.status;
+    if (fields.notes !== undefined) updateFields.notes = fields.notes;
 
-    // Update workflow data if provided
     if (workflowData !== undefined) {
-      updateFields["Workflow Data"] =
-        typeof workflowData === "string"
-          ? workflowData
-          : JSON.stringify(workflowData);
+      updateFields.workflow_data = typeof workflowData === "string"
+        ? JSON.parse(workflowData)
+        : workflowData;
     }
 
-    const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${BOARDS_TABLE_ID}/${id}`;
-    const data = await airtableFetch(url, {
-      method: "PATCH",
-      body: JSON.stringify({ fields: updateFields }),
-    });
+    const { data, error } = await getSupabase()
+      .from("boards")
+      .update(updateFields)
+      .eq("id", id)
+      .select()
+      .single();
 
-    return NextResponse.json({ board: mapRecord(data) });
+    if (error) throw error;
+
+    return NextResponse.json({ board: mapRow(data) });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Failed to update board";
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
 
-// DELETE /api/boards?id=recXXX
+// DELETE /api/boards?id=xxx
 export async function DELETE(request: NextRequest) {
+  if (!isSupabaseConfigured()) {
+    return NextResponse.json({ error: "Supabase not configured" }, { status: 500 });
+  }
+
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
 
@@ -275,16 +214,9 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: "id is required" }, { status: 400 });
   }
 
-  if (!BOARDS_TABLE_ID) {
-    return NextResponse.json(
-      { error: "AIRTABLE_BOARDS_TABLE_ID not configured" },
-      { status: 500 }
-    );
-  }
-
   try {
-    const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${BOARDS_TABLE_ID}/${id}`;
-    await airtableFetch(url, { method: "DELETE" });
+    const { error } = await getSupabase().from("boards").delete().eq("id", id);
+    if (error) throw error;
     return NextResponse.json({ success: true });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Failed to delete board";
