@@ -102,7 +102,7 @@ function buildBrandPrompt(c: ClientBrandDNA): string {
     .trim();
 }
 
-type Tab = "client" | "workflow" | "boards";
+type Tab = "client" | "workflow";
 
 export function ClientLoader() {
   const [tab, setTab] = useState<Tab>("client");
@@ -121,10 +121,9 @@ export function ClientLoader() {
   const [loadingWorkflow, setLoadingWorkflow] = useState(false);
   const [workflowError, setWorkflowError] = useState<string | null>(null);
 
-  // Boards state
+  // Boards state (inline in Client tab)
   const [boards, setBoards] = useState<BoardEntry[]>([]);
   const [boardsLoading, setBoardsLoading] = useState(false);
-  const [boardsError, setBoardsError] = useState<string | null>(null);
   const [loadingBoardId, setLoadingBoardId] = useState<string | null>(null);
 
   const { nodes, updateNodeData, loadWorkflow, setBoardAssociation, markAsUnsaved, loadFromBoard } = useWorkflowStore(useShallow((state) => ({
@@ -145,27 +144,16 @@ export function ClientLoader() {
       .catch(() => { setError("Failed to load clients from Airtable"); setLoadingClients(false); });
   }, [isOpen, clients.length]);
 
-  // Load boards when clientId changes (for the Boards tab)
-  const loadBoards = useCallback(async (clientId: string) => {
-    if (!clientId) { setBoards([]); return; }
-    setBoardsLoading(true);
-    setBoardsError(null);
-    try {
-      const res = await fetch(`/api/boards?clientId=${clientId}`);
-      const data = await res.json();
-      if (data.boards) setBoards(data.boards);
-      else setBoards([]);
-    } catch {
-      setBoardsError("Failed to load boards");
-    } finally {
-      setBoardsLoading(false);
-    }
-  }, []);
-
+  // Load boards when a client is selected
   useEffect(() => {
-    if (selectedClientId) loadBoards(selectedClientId);
-    else setBoards([]);
-  }, [selectedClientId, loadBoards]);
+    if (!selectedClientId) { setBoards([]); return; }
+    setBoardsLoading(true);
+    fetch(`/api/boards?clientId=${selectedClientId}`)
+      .then((r) => r.json())
+      .then((data) => setBoards(data.boards || []))
+      .catch(() => setBoards([]))
+      .finally(() => setBoardsLoading(false));
+  }, [selectedClientId]);
 
   const injectBrandDNA = useCallback((client: ClientBrandDNA) => {
     const brandPrompt = buildBrandPrompt(client);
@@ -273,7 +261,7 @@ export function ClientLoader() {
     }
   }, [selectedWorkflow, loadWorkflow]);
 
-  // Open an existing board from the Boards tab
+  // Open an existing board
   const handleOpenBoard = useCallback(async (board: BoardEntry) => {
     setLoadingBoardId(board.id);
     try {
@@ -298,11 +286,18 @@ export function ClientLoader() {
     }
   }, [loadFromBoard, currentClient]);
 
-  // Sync clientId when client name is selected
+  // Sync clientId when client name changes
   const handleClientNameChange = useCallback((name: string) => {
     setSelectedName(name);
     const client = clients.find(c => c.clientName === name);
     setSelectedClientId(client?.id || "");
+    // Also cache the current client brand data for board loading
+    if (client) {
+      fetch(`/api/client?name=${encodeURIComponent(name)}`)
+        .then(r => r.json())
+        .then(data => { if (data.client) setCurrentClient(data.client); })
+        .catch(() => {});
+    }
   }, [clients]);
 
   return (
@@ -316,7 +311,7 @@ export function ClientLoader() {
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-2 z-50 w-[380px] bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl p-4">
+        <div className="absolute top-full left-0 mt-2 z-50 w-80 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-white">El Kiosk</h3>
             <button onClick={() => setIsOpen(false)} className="text-zinc-400 hover:text-white text-lg leading-none">×</button>
@@ -335,12 +330,6 @@ export function ClientLoader() {
             >
               📋 Workflow
             </button>
-            <button
-              onClick={() => setTab("boards")}
-              className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-colors ${tab === "boards" ? "bg-yellow-400 text-black" : "text-zinc-400 hover:text-white"}`}
-            >
-              🗂️ Boards
-            </button>
           </div>
 
           {tab === "client" && (
@@ -349,6 +338,7 @@ export function ClientLoader() {
                 <div className="mb-3 p-2 bg-red-900/50 border border-red-700 rounded text-xs text-red-300">{error}</div>
               )}
 
+              {/* Client selector */}
               <div className="mb-3">
                 <label className="block text-xs text-zinc-400 mb-1">Client</label>
                 {loadingClients ? (
@@ -369,6 +359,7 @@ export function ClientLoader() {
                 )}
               </div>
 
+              {/* Tier selector */}
               <div className="mb-4">
                 <label className="block text-xs text-zinc-400 mb-1">Tier / Workflow</label>
                 <select
@@ -382,7 +373,8 @@ export function ClientLoader() {
                 </select>
               </div>
 
-              <div className="flex gap-2">
+              {/* Action buttons */}
+              <div className="flex gap-2 mb-3">
                 <button
                   onClick={handleLoadClient}
                   disabled={!selectedName || loadingClient}
@@ -400,8 +392,53 @@ export function ClientLoader() {
                 </button>
               </div>
 
+              {/* Existing boards for selected client */}
+              {selectedClientId && (
+                <div className="border-t border-zinc-700/50 pt-3 mt-1">
+                  <label className="block text-xs text-zinc-400 mb-2">
+                    Existing Boards {boards.length > 0 && <span className="text-zinc-500">({boards.length})</span>}
+                  </label>
+
+                  {boardsLoading ? (
+                    <div className="py-4 text-center text-xs text-zinc-500">Loading boards…</div>
+                  ) : boards.length === 0 ? (
+                    <div className="py-4 text-center text-xs text-zinc-600">No boards yet</div>
+                  ) : (
+                    <div className="max-h-[200px] overflow-y-auto space-y-1 pr-1">
+                      {boards.map((board) => {
+                        const dotColor = STATUS_DOT_COLORS[board.status] || STATUS_DOT_COLORS.draft;
+                        const isLoading = loadingBoardId === board.id;
+                        return (
+                          <button
+                            key={board.id}
+                            onClick={() => handleOpenBoard(board)}
+                            disabled={isLoading}
+                            className="w-full text-left px-2.5 py-2 bg-zinc-800/60 hover:bg-zinc-800 border border-zinc-700/50 hover:border-zinc-600 rounded-lg transition-all disabled:opacity-50 group"
+                          >
+                            <div className="flex items-center justify-between gap-2 mb-0.5">
+                              <span className="text-xs font-medium text-zinc-300 group-hover:text-yellow-400 transition-colors truncate">
+                                {isLoading ? "Loading…" : board.boardName}
+                              </span>
+                              <span className="shrink-0 flex items-center gap-1 text-[10px] text-zinc-500">
+                                <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
+                                {board.status}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-[10px] text-zinc-600">
+                              <span>{formatDate(board.updatedAt || board.createdAt)}</span>
+                              <span>{timeAgo(board.updatedAt || board.createdAt)}</span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Brand DNA preview */}
               {currentClient && (
-                <div className="mt-4 p-3 bg-zinc-800 rounded-lg text-xs space-y-1 text-zinc-300">
+                <div className="mt-3 p-3 bg-zinc-800 rounded-lg text-xs space-y-1 text-zinc-300">
                   <div className="font-semibold text-white text-sm mb-2">✅ {currentClient.clientName}</div>
                   <div className="flex gap-2 flex-wrap">
                     {[currentClient.primaryColor, currentClient.secondaryColor, currentClient.accentColor]
@@ -446,90 +483,6 @@ export function ClientLoader() {
               >
                 {loadingWorkflow ? "Loading…" : "Load Workflow"}
               </button>
-            </div>
-          )}
-
-          {tab === "boards" && (
-            <div>
-              {/* Client selector for boards */}
-              <div className="mb-3">
-                <label className="block text-xs text-zinc-400 mb-1">Client</label>
-                {loadingClients ? (
-                  <div className="text-xs text-zinc-500">Loading clients…</div>
-                ) : (
-                  <select
-                    value={selectedClientId}
-                    onChange={(e) => {
-                      const cid = e.target.value;
-                      setSelectedClientId(cid);
-                      const client = clients.find(c => c.id === cid);
-                      setSelectedName(client?.clientName || "");
-                    }}
-                    className="w-full bg-zinc-800 border border-zinc-600 rounded-md px-2 py-1.5 text-sm text-white focus:outline-none focus:border-yellow-400"
-                  >
-                    <option value="">— Select client —</option>
-                    {clients.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.clientName}{c.status ? ` (${c.status})` : ""}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-
-              {/* Boards list */}
-              {!selectedClientId ? (
-                <div className="py-8 text-center text-xs text-zinc-500">
-                  Select a client to see their boards
-                </div>
-              ) : boardsLoading ? (
-                <div className="py-8 text-center text-xs text-zinc-500">
-                  Loading boards…
-                </div>
-              ) : boardsError ? (
-                <div className="p-2 bg-red-900/50 border border-red-700 rounded text-xs text-red-300">
-                  {boardsError}
-                </div>
-              ) : boards.length === 0 ? (
-                <div className="py-8 text-center text-xs text-zinc-500">
-                  No boards yet for this client
-                </div>
-              ) : (
-                <div className="max-h-[300px] overflow-y-auto space-y-1.5 pr-1">
-                  {boards.map((board) => {
-                    const dotColor = STATUS_DOT_COLORS[board.status] || STATUS_DOT_COLORS.draft;
-                    const isLoading = loadingBoardId === board.id;
-                    return (
-                      <button
-                        key={board.id}
-                        onClick={() => handleOpenBoard(board)}
-                        disabled={isLoading}
-                        className="w-full text-left p-3 bg-zinc-800 hover:bg-zinc-750 border border-zinc-700 hover:border-zinc-500 rounded-lg transition-all disabled:opacity-50 group"
-                      >
-                        <div className="flex items-start justify-between gap-2 mb-1.5">
-                          <h4 className="text-sm font-medium text-zinc-200 group-hover:text-yellow-400 transition-colors line-clamp-1 flex-1">
-                            {isLoading ? "Loading…" : board.boardName}
-                          </h4>
-                          <span className="shrink-0 inline-flex items-center gap-1 text-[10px] text-zinc-400">
-                            <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
-                            {board.status}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between text-[11px] text-zinc-500">
-                          <span>{formatDate(board.updatedAt || board.createdAt)}</span>
-                          <span>{timeAgo(board.updatedAt || board.createdAt)}</span>
-                        </div>
-                        {board.hasWorkflowData && (
-                          <div className="mt-1.5 flex items-center gap-1">
-                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500" />
-                            <span className="text-[10px] text-zinc-600">has workflow data</span>
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
             </div>
           )}
         </div>
