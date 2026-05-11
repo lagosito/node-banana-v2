@@ -9,7 +9,7 @@ const ConfigSchema = z.object({
   PERPLEXITY_MODEL: z.string().default('sonar'),
 
   GEMINI_API_KEY: z.string().min(1),
-  GEMINI_MODEL: z.string().default('gemini-2.5-pro'),
+  GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
 
   ANTHROPIC_API_KEY: z.string().min(1),
   ANTHROPIC_MODEL: z.string().default('claude-sonnet-4-6'),

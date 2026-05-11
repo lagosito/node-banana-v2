@@ -185,9 +185,8 @@ export class GeminiClient implements ProviderClient {
       model: this.model,
       contents: prompt,
       config: {
-        tools: [{ googleSearch: {} }],
         abortSignal: signal,
-      } as unknown as Record<string, unknown>,
+      },
     });
 
     const text = response.text ?? '';
