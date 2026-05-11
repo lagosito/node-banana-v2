@@ -34,7 +34,7 @@ async function createInChunks<T extends Record<string, unknown>>(
 
 export async function savePrompts(prompts: Prompt[]): Promise<Prompt[]> {
   const cfg = getConfig();
-  const records = prompts.map((p) => ({ fields: { brand_id: [p.brand_id], prompt_text: p.prompt_text, category: p.category, language: p.language, active: p.active } }));
+  const records = prompts.map((p) => ({ fields: { brand_id: p.brand_id, prompt_text: p.prompt_text, category: p.category, language: p.language, active: p.active } }));
   const created = await createInChunks(cfg.AIRTABLE_TABLE_PROMPTS, records);
   log.info({ count: created.length }, 'saved prompts to Airtable');
   return prompts.map((p, idx) => ({ ...p, prompt_id: created[idx]!.id }));
@@ -42,7 +42,7 @@ export async function savePrompts(prompts: Prompt[]): Promise<Prompt[]> {
 
 export async function saveRuns(runs: RunRecord[]): Promise<RunRecord[]> {
   const cfg = getConfig();
-  const records = runs.map((r) => ({ fields: { prompt_id: [r.prompt_id], brand_id: [r.brand_id], timestamp: r.timestamp, model: r.model, country: r.country, status: r.status, error_message: r.error_message ?? '', duration_ms: r.duration_ms ?? 0 } }));
+  const records = runs.map((r) => ({ fields: { prompt_id: r.prompt_id, brand_id: r.brand_id, timestamp: r.timestamp, model: r.model, country: r.country, status: r.status, error_message: r.error_message ?? '', duration_ms: r.duration_ms ?? 0 } }));
   const created = await createInChunks(cfg.AIRTABLE_TABLE_RUNS, records);
   return runs.map((r, idx) => ({ ...r, run_id: created[idx]!.id }));
 }
@@ -67,7 +67,7 @@ export async function saveAnswers(answers: ModelAnswer[], runIdsByIndex: string[
 
   const records = answers.map((a, idx) => ({
     fields: {
-      run_id: [runIdsByIndex[idx]!], supabase_raw_id: inserted[idx]!.id as string,
+      run_id: runIdsByIndex[idx]!, supabase_raw_id: inserted[idx]!.id as string,
       full_response_text: a.full_response_text.length > AIRTABLE_TEXT_LIMIT
         ? a.full_response_text.slice(0, AIRTABLE_TEXT_LIMIT) + '\n[\u2026truncated]'
         : a.full_response_text,
@@ -85,7 +85,7 @@ export async function saveAnswers(answers: ModelAnswer[], runIdsByIndex: string[
 export async function saveScore(score: BrandScore): Promise<string> {
   const cfg = getConfig();
   const fields = {
-    brand_id: [score.brand_id], period: score.period, visibility_pct: score.visibility_pct,
+    brand_id: score.brand_id, period: score.period, visibility_pct: score.visibility_pct,
     position_avg: score.position_avg ?? null, sentiment_avg: score.sentiment_avg,
     share_of_voice: JSON.stringify(score.share_of_voice), by_model: JSON.stringify(score.by_model),
     by_category: JSON.stringify(score.by_category), sentiment_distribution: JSON.stringify(score.sentiment_distribution),
