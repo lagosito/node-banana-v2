@@ -35,6 +35,7 @@ export class ChatGPTClient implements ProviderClient {
 
   constructor() {
     const cfg = getConfig();
+    if (!cfg.OPENAI_API_KEY) throw new VisibilityError('OPENAI_API_KEY not set', 'MISSING_KEY', false);
     this.client = new OpenAI({
       apiKey: cfg.OPENAI_API_KEY,
       timeout: cfg.REQUEST_TIMEOUT_MS,
@@ -103,6 +104,7 @@ export class PerplexityClient implements ProviderClient {
 
   constructor() {
     const cfg = getConfig();
+    if (!cfg.PERPLEXITY_API_KEY) throw new VisibilityError('PERPLEXITY_API_KEY not set', 'MISSING_KEY', false);
     this.apiKey = cfg.PERPLEXITY_API_KEY;
     this.model = cfg.PERPLEXITY_MODEL;
     this.timeoutMs = cfg.REQUEST_TIMEOUT_MS;

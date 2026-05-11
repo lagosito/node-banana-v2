@@ -1,18 +1,18 @@
 import { z } from 'zod';
 
 const ConfigSchema = z.object({
-  // AI providers
-  OPENAI_API_KEY: z.string().min(1),
+  // AI providers — only ANTHROPIC and GEMINI are strictly required
+  OPENAI_API_KEY: z.string().optional().default(''),
   OPENAI_MODEL: z.string().default('gpt-5.5'),
 
-  PERPLEXITY_API_KEY: z.string().min(1),
+  PERPLEXITY_API_KEY: z.string().optional().default(''),
   PERPLEXITY_MODEL: z.string().default('sonar'),
 
   GEMINI_API_KEY: z.string().min(1),
   GEMINI_MODEL: z.string().default('gemini-2.5-pro'),
 
   ANTHROPIC_API_KEY: z.string().min(1),
-  ANTHROPIC_MODEL: z.string().default('claude-opus-4-7'),
+  ANTHROPIC_MODEL: z.string().default('claude-sonnet-4-6'),
 
   // Storage
   AIRTABLE_API_KEY: z.string().min(1),
@@ -39,7 +39,14 @@ let cached: Config | null = null;
 
 export function getConfig(): Config {
   if (cached) return cached;
-  const parsed = ConfigSchema.safeParse(process.env);
+
+  // Map env vars that might have different names in Vercel
+  const env = { ...process.env };
+  if (!env.SUPABASE_SERVICE_KEY && env.SUPABASE_SERVICE_ROLE_KEY) {
+    env.SUPABASE_SERVICE_KEY = env.SUPABASE_SERVICE_ROLE_KEY;
+  }
+
+  const parsed = ConfigSchema.safeParse(env);
   if (!parsed.success) {
     const issues = parsed.error.issues
       .map((i) => `${i.path.join('.')}: ${i.message}`)
