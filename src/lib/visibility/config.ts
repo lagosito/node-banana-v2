@@ -2,10 +2,10 @@ import { z } from 'zod';
 
 const ConfigSchema = z.object({
   // AI providers — only ANTHROPIC and GEMINI are strictly required
-  OPENAI_API_KEY: z.string().optional().default(''),
+  OPENAI_API_KEY: z.string().optional(),
   OPENAI_MODEL: z.string().default('gpt-5.5'),
 
-  PERPLEXITY_API_KEY: z.string().optional().default(''),
+  PERPLEXITY_API_KEY: z.string().optional(),
   PERPLEXITY_MODEL: z.string().default('sonar'),
 
   GEMINI_API_KEY: z.string().min(1),
@@ -41,10 +41,13 @@ export function getConfig(): Config {
   if (cached) return cached;
 
   // Map env vars that might have different names in Vercel
-  const env = { ...process.env };
+  const env: Record<string, string | undefined> = { ...process.env };
   if (!env.SUPABASE_SERVICE_KEY && env.SUPABASE_SERVICE_ROLE_KEY) {
     env.SUPABASE_SERVICE_KEY = env.SUPABASE_SERVICE_ROLE_KEY;
   }
+  // Convert undefined to empty string for optional fields
+  if (!env.OPENAI_API_KEY) env.OPENAI_API_KEY = '';
+  if (!env.PERPLEXITY_API_KEY) env.PERPLEXITY_API_KEY = '';
 
   const parsed = ConfigSchema.safeParse(env);
   if (!parsed.success) {
