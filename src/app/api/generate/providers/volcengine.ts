@@ -61,13 +61,13 @@ interface VolcengineContentItem {
   role?: string;
 }
 
-/** Map from our model IDs to actual Volcengine endpoint/model IDs */
+  // Map from our model IDs to actual BytePlus/Volcengine model IDs
 function getVolcengineModelId(modelId: string): string {
   const map: Record<string, string> = {
-    "seedance-2.0/text-to-video": "ark-4790519f-54a3-4980-9db4-f52d8c4f0e13-52a5d",
-    "seedance-2.0/image-to-video": "ark-4790519f-54a3-4980-9db4-f52d8c4f0e13-52a5d",
-    "seedance-2.0-fast/text-to-video": "doubao-seedance-2-0-fast-260128",
-    "seedance-2.0-fast/image-to-video": "doubao-seedance-2-0-fast-260128",
+    "seedance-2.0/text-to-video": "dreamina-seedance-2-0-260128",
+    "seedance-2.0/image-to-video": "dreamina-seedance-2-0-260128",
+    "seedance-2.0-fast/text-to-video": "dreamina-seedance-2-0-fast-260128",
+    "seedance-2.0-fast/image-to-video": "dreamina-seedance-2-0-fast-260128",
   };
   return map[modelId] || modelId;
 }
