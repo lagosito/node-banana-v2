@@ -453,13 +453,14 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // User-provided key takes precedence over env variable
+      // Support both BytePlus ARK (international) and Volcengine ARK (China)
       const volcengineApiKey = request.headers.get("X-Volcengine-Key") || process.env.VOLCENGINE_API_KEY;
-      if (!volcengineApiKey) {
+      const byteplusApiKey = request.headers.get("X-BytePlus-Key") || process.env.BYTEPLUS_API_KEY;
+      if (!volcengineApiKey && !byteplusApiKey) {
         return NextResponse.json<GenerateResponse>(
           {
             success: false,
-            error: "Volcengine API key not configured. Add VOLCENGINE_API_KEY to .env.local or configure in Settings.",
+            error: "ARK API key not configured. Add BYTEPLUS_API_KEY or VOLCENGINE_API_KEY to .env.local or configure in Settings.",
           },
           { status: 401 }
         );
@@ -500,7 +501,7 @@ export async function POST(request: NextRequest) {
         dynamicInputs: processedDynamicInputs,
       };
 
-      const result = await generateWithVolcengine(requestId, volcengineApiKey, genInput);
+      const result = await generateWithVolcengine(requestId, volcengineApiKey || "", genInput, byteplusApiKey || undefined);
 
       if (!result.success) {
         return NextResponse.json<GenerateResponse>(

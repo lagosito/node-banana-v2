@@ -145,12 +145,19 @@ function buildContentArray(
  */
 export async function generateWithVolcengine(
   requestId: string,
-  apiKey: string,
-  input: GenerationInput
+  volcengineApiKey: string,
+  input: GenerationInput,
+  byteplusApiKey?: string
 ): Promise<GenerationOutput> {
-  console.log(`[API:${requestId}] Volcengine generation - Model: ${input.model.id}, Prompt: ${input.prompt.length} chars`);
+  // Support both BytePlus ARK (international) and Volcengine ARK (China)
+  const apiKey = byteplusApiKey || volcengineApiKey;
+  const isByteplus = !!byteplusApiKey;
+  const ARK_API_BASE = isByteplus
+    ? "https://ark.ap-southeast.bytepluses.com/api/v3"
+    : "https://ark.cn-beijing.volces.com/api/v3";
 
-  const VOLCENGINE_API_BASE = "https://ark.cn-beijing.volces.com/api/v3";
+  console.log(`[API:${requestId}] Volcengine generation (${isByteplus ? 'BytePlus' : 'Volcengine CN'}) - Model: ${input.model.id}, Prompt: ${input.prompt.length} chars`);
+
   const modelId = input.model.id;
 
   // Validate modelId to prevent injection
@@ -192,7 +199,7 @@ export async function generateWithVolcengine(
   console.log(`[API:${requestId}] Volcengine payload: ${JSON.stringify({ ...payload, content: `${content.length} items` }).substring(0, 500)}`);
 
   // Submit task
-  const submitUrl = `${VOLCENGINE_API_BASE}/contents/generations/tasks`;
+  const submitUrl = `${ARK_API_BASE}/contents/generations/tasks`;
   console.log(`[API:${requestId}] Volcengine submit URL: ${submitUrl}`);
 
   const submitResponse = await fetch(submitUrl, {
@@ -262,7 +269,7 @@ export async function generateWithVolcengine(
     await new Promise((resolve) => setTimeout(resolve, pollInterval));
 
     try {
-      const pollUrl = `${VOLCENGINE_API_BASE}/contents/generations/tasks/${taskId}`;
+      const pollUrl = `${ARK_API_BASE}/contents/generations/tasks/${taskId}`;
       const pollResponse = await fetch(pollUrl, {
         headers: {
           Authorization: `Bearer ${apiKey}`,
