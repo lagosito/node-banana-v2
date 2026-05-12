@@ -7,7 +7,7 @@
  * GET /api/models
  *
  * Query params:
- *   - provider: Optional, filter to specific provider ("replicate" | "fal" | "gemini" | "wavespeed")
+ *   - provider: Optional, filter to specific provider ("replicate" | "fal" | "gemini" | "wavespeed" | "volcengine")
  *   - search: Optional, search query
  *   - refresh: Optional, bypass cache if "true"
  *   - capabilities: Optional, filter by capabilities (comma-separated)
@@ -16,6 +16,7 @@
  *   - X-Replicate-Key: Replicate API key
  *   - X-Fal-Key: fal.ai API key (optional, works without but rate limited)
  *   - X-WaveSpeed-Key: WaveSpeed API key
+ *   - X-Volcengine-Key: Volcengine API key
  *
  * Response:
  *   {
@@ -428,6 +429,42 @@ const GEMINI_VIDEO_MODELS: ProviderModel[] = [
 ];
 
 // WaveSpeed models are now fetched dynamically from https://api.wavespeed.ai/api/v3/models
+
+// Volcengine Seedance 2.0 models (hardcoded - no discovery API available)
+const VOLCENGINE_MODELS: ProviderModel[] = [
+  {
+    id: "seedance-2.0/text-to-video",
+    name: "Seedance 2.0",
+    description: "ByteDance Seedance 2.0 — SOTA video generation with text, image, audio, and video inputs. Supports up to 15s, 1080p.",
+    provider: "volcengine",
+    capabilities: ["text-to-video"],
+    pricing: { type: "per-run", amount: 0.10, currency: "USD" },
+  },
+  {
+    id: "seedance-2.0/image-to-video",
+    name: "Seedance 2.0 (Image-to-Video)",
+    description: "Seedance 2.0 image-to-video — use reference images as first frame or multi-modal references.",
+    provider: "volcengine",
+    capabilities: ["image-to-video"],
+    pricing: { type: "per-run", amount: 0.10, currency: "USD" },
+  },
+  {
+    id: "seedance-2.0-fast/text-to-video",
+    name: "Seedance 2.0 Fast",
+    description: "Seedance 2.0 fast — faster generation, 720p max, lower cost.",
+    provider: "volcengine",
+    capabilities: ["text-to-video"],
+    pricing: { type: "per-run", amount: 0.05, currency: "USD" },
+  },
+  {
+    id: "seedance-2.0-fast/image-to-video",
+    name: "Seedance 2.0 Fast (Image-to-Video)",
+    description: "Seedance 2.0 fast image-to-video — faster generation with image input.",
+    provider: "volcengine",
+    capabilities: ["image-to-video"],
+    pricing: { type: "per-run", amount: 0.05, currency: "USD" },
+  },
+];
 
 // ============ Replicate Types ============
 
@@ -954,6 +991,7 @@ export async function GET(
   const falKey = request.headers.get("X-Fal-Key") || process.env.FAL_API_KEY || null;
   const kieKey = request.headers.get("X-Kie-Key") || process.env.KIE_API_KEY || null;
   const wavespeedKey = request.headers.get("X-WaveSpeed-Key") || process.env.WAVESPEED_API_KEY || null;
+  const volcengineKey = request.headers.get("X-Volcengine-Key") || process.env.VOLCENGINE_API_KEY || null;
 
   // Build list of all available providers (have keys from env or client headers)
   const availableProviders: string[] = ["gemini"]; // Gemini always available
@@ -961,11 +999,13 @@ export async function GET(
   if (replicateKey) availableProviders.push("replicate");
   if (kieKey) availableProviders.push("kie");
   if (wavespeedKey) availableProviders.push("wavespeed");
+  if (volcengineKey) availableProviders.push("volcengine");
 
   // Determine which providers to fetch from (excluding gemini/kie - handled separately as hardcoded)
   const providersToFetch: ProviderType[] = [];
   let includeGemini = false;
   let includeKie = false;
+  let includeVolcengine = false;
 
   if (providerFilter) {
     if (providerFilter === "gemini") {
@@ -984,6 +1024,9 @@ export async function GET(
           { status: 400 }
         );
       }
+    } else if (providerFilter === "volcengine") {
+      // Always show Seedance models (key only needed at generation time)
+      includeVolcengine = true;
     } else if (providerFilter === "wavespeed") {
       if (wavespeedKey) {
         // WaveSpeed requested with key - fetch from API
@@ -1008,6 +1051,7 @@ export async function GET(
     // Include all providers that have keys configured
     includeGemini = true; // Gemini always available
     includeKie = kieKey ? true : false; // Kie only if API key is configured
+    includeVolcengine = true; // Always show Seedance models
     if (wavespeedKey) {
       providersToFetch.push("wavespeed"); // WaveSpeed if key is configured
     }
@@ -1020,12 +1064,12 @@ export async function GET(
   }
 
   // Gemini and Kie are always available (with key for Kie), so we don't fail if no external providers
-  if (providersToFetch.length === 0 && !includeGemini && !includeKie) {
+  if (providersToFetch.length === 0 && !includeGemini && !includeKie && !includeVolcengine) {
     return NextResponse.json<ModelsErrorResponse>(
       {
         success: false,
         error:
-          "No providers available. Add REPLICATE_API_KEY, FAL_API_KEY, KIE_API_KEY, or WAVESPEED_API_KEY to .env.local or configure in Settings.",
+          "No providers available. Add REPLICATE_API_KEY, FAL_API_KEY, KIE_API_KEY, WAVESPEED_API_KEY, or VOLCENGINE_API_KEY to .env.local or configure in Settings.",
       },
       { status: 400 }
     );
@@ -1064,6 +1108,21 @@ export async function GET(
     providerResults["kie"] = {
       success: true,
       count: kieModels.length,
+      cached: true, // Hardcoded models are effectively "cached"
+    };
+    anyFromCache = true;
+  }
+
+  // Add Volcengine models if included (hardcoded, no API call needed)
+  if (includeVolcengine) {
+    let volcengineModels = VOLCENGINE_MODELS;
+    if (searchQuery) {
+      volcengineModels = filterModelsBySearch(volcengineModels, searchQuery);
+    }
+    allModels.push(...volcengineModels);
+    providerResults["volcengine"] = {
+      success: true,
+      count: volcengineModels.length,
       cached: true, // Hardcoded models are effectively "cached"
     };
     anyFromCache = true;

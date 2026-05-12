@@ -18,6 +18,7 @@ import { generateWithReplicate } from "./providers/replicate";
 import { clearFalInputMappingCache as _clearFalInputMappingCache, generateWithFalQueue } from "./providers/fal";
 import { generateWithKie } from "./providers/kie";
 import { generateWithWaveSpeed } from "./providers/wavespeed";
+import { generateWithVolcengine } from "./providers/volcengine";
 
 // Re-export for backward compatibility (test file imports from route)
 export const clearFalInputMappingCache = _clearFalInputMappingCache;
@@ -421,6 +422,85 @@ export async function POST(request: NextRequest) {
       };
 
       const result = await generateWithWaveSpeed(requestId, wavespeedApiKey, genInput);
+
+      if (!result.success) {
+        return NextResponse.json<GenerateResponse>(
+          {
+            success: false,
+            error: result.error || "Generation failed",
+          },
+          { status: 500 }
+        );
+      }
+
+      // Return first output
+      const output = result.outputs?.[0];
+      if (!output?.data && !output?.url) {
+        return NextResponse.json<GenerateResponse>(
+          { success: false, error: "No output in generation result" },
+          { status: 500 }
+        );
+      }
+
+      return buildMediaResponse(output);
+    }
+
+    if (provider === "volcengine") {
+      if (!selectedModel?.modelId || !selectedModel?.displayName) {
+        return NextResponse.json<GenerateResponse>(
+          { success: false, error: "selectedModel with modelId and displayName is required for Volcengine" },
+          { status: 400 }
+        );
+      }
+
+      // User-provided key takes precedence over env variable
+      const volcengineApiKey = request.headers.get("X-Volcengine-Key") || process.env.VOLCENGINE_API_KEY;
+      if (!volcengineApiKey) {
+        return NextResponse.json<GenerateResponse>(
+          {
+            success: false,
+            error: "Volcengine API key not configured. Add VOLCENGINE_API_KEY to .env.local or configure in Settings.",
+          },
+          { status: 401 }
+        );
+      }
+
+      // Keep Data URIs as-is
+      const processedImages: string[] = images ? [...images] : [];
+
+      // Process dynamicInputs: filter empty values
+      let processedDynamicInputs: Record<string, string | string[]> | undefined = undefined;
+
+      if (dynamicInputs) {
+        processedDynamicInputs = {};
+        for (const key of Object.keys(dynamicInputs)) {
+          const value = dynamicInputs[key];
+
+          // Skip empty/null/undefined values
+          if (value === null || value === undefined || value === '') {
+            continue;
+          }
+
+          processedDynamicInputs[key] = value;
+        }
+      }
+
+      // Build generation input
+      const genInput: GenerationInput = {
+        model: {
+          id: selectedModel.modelId,
+          name: selectedModel.displayName,
+          provider: "volcengine",
+          capabilities: capabilitiesForMediaType(mediaType),
+          description: null,
+        },
+        prompt: prompt || "",
+        images: processedImages,
+        parameters,
+        dynamicInputs: processedDynamicInputs,
+      };
+
+      const result = await generateWithVolcengine(requestId, volcengineApiKey, genInput);
 
       if (!result.success) {
         return NextResponse.json<GenerateResponse>(

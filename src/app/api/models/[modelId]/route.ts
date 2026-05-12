@@ -956,6 +956,110 @@ function getKieSchema(modelId: string): ExtractedSchema {
 }
 
 /**
+ * Get hardcoded schema for Volcengine Seedance models
+ * These don't have a schema discovery API, so we define them manually
+ */
+function getVolcengineSchema(modelId: string): ExtractedSchema {
+  // Common parameters for all Seedance models
+  const commonParams: ModelParameter[] = [
+    {
+      name: "ratio",
+      type: "string",
+      description: "Output aspect ratio",
+      enum: ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9", "adaptive"],
+      default: "16:9",
+    },
+    {
+      name: "duration",
+      type: "integer",
+      description: "Video duration in seconds (4-15 for Seedance 2.0, -1 for auto)",
+      minimum: -1,
+      maximum: 15,
+      default: 5,
+    },
+    {
+      name: "resolution",
+      type: "string",
+      description: "Output resolution",
+      enum: ["480p", "720p", "1080p"],
+      default: "720p",
+    },
+    {
+      name: "generate_audio",
+      type: "boolean",
+      description: "Generate audio for the video",
+      default: true,
+    },
+    {
+      name: "watermark",
+      type: "boolean",
+      description: "Add watermark to output",
+      default: false,
+    },
+    {
+      name: "seed",
+      type: "integer",
+      description: "Random seed for reproducibility (-1 for random)",
+      minimum: -1,
+      default: -1,
+    },
+  ];
+
+  const schemas: Record<string, ExtractedSchema> = {
+    "seedance-2.0/text-to-video": {
+      parameters: commonParams,
+      inputs: [
+        { name: "prompt", type: "text", required: true, label: "Prompt" },
+        { name: "first_frame", type: "image", required: false, label: "First Frame" },
+        { name: "last_frame", type: "image", required: false, label: "Last Frame" },
+        { name: "reference_image", type: "image", required: false, label: "Ref. Image", isArray: true },
+        { name: "reference_video", type: "image", required: false, label: "Ref. Video" },
+        { name: "reference_audio", type: "audio", required: false, label: "Ref. Audio" },
+      ],
+    },
+    "seedance-2.0/image-to-video": {
+      parameters: commonParams,
+      inputs: [
+        { name: "prompt", type: "text", required: false, label: "Prompt" },
+        { name: "first_frame", type: "image", required: true, label: "First Frame" },
+        { name: "last_frame", type: "image", required: false, label: "Last Frame" },
+        { name: "reference_image", type: "image", required: false, label: "Ref. Image", isArray: true },
+        { name: "reference_video", type: "image", required: false, label: "Ref. Video" },
+        { name: "reference_audio", type: "audio", required: false, label: "Ref. Audio" },
+      ],
+    },
+    "seedance-2.0-fast/text-to-video": {
+      parameters: commonParams.map(p =>
+        p.name === "resolution"
+          ? { ...p, enum: ["480p", "720p"], default: "720p" }
+          : p
+      ),
+      inputs: [
+        { name: "prompt", type: "text", required: true, label: "Prompt" },
+        { name: "first_frame", type: "image", required: false, label: "First Frame" },
+        { name: "last_frame", type: "image", required: false, label: "Last Frame" },
+        { name: "reference_image", type: "image", required: false, label: "Ref. Image", isArray: true },
+      ],
+    },
+    "seedance-2.0-fast/image-to-video": {
+      parameters: commonParams.map(p =>
+        p.name === "resolution"
+          ? { ...p, enum: ["480p", "720p"], default: "720p" }
+          : p
+      ),
+      inputs: [
+        { name: "prompt", type: "text", required: false, label: "Prompt" },
+        { name: "first_frame", type: "image", required: true, label: "First Frame" },
+        { name: "last_frame", type: "image", required: false, label: "Last Frame" },
+        { name: "reference_image", type: "image", required: false, label: "Ref. Image", isArray: true },
+      ],
+    },
+  };
+
+  return schemas[modelId] || { parameters: [], inputs: [] };
+}
+
+/**
  * Get schema for Gemini video models (native Veo via Gemini API)
  * Returns null if the model is not a Gemini video model.
  */
@@ -1234,11 +1338,11 @@ export async function GET(
   const decodedModelId = decodeURIComponent(modelId);
   const provider = request.nextUrl.searchParams.get("provider") as ProviderType | null;
 
-  if (!provider || (provider !== "replicate" && provider !== "fal" && provider !== "kie" && provider !== "wavespeed" && provider !== "gemini")) {
+  if (!provider || (provider !== "replicate" && provider !== "fal" && provider !== "kie" && provider !== "wavespeed" && provider !== "gemini" && provider !== "volcengine")) {
     return NextResponse.json<SchemaErrorResponse>(
       {
         success: false,
-        error: "Invalid or missing provider. Use ?provider=replicate, ?provider=fal, ?provider=kie, ?provider=wavespeed, or ?provider=gemini",
+        error: "Invalid or missing provider. Use ?provider=replicate, ?provider=fal, ?provider=kie, ?provider=wavespeed, ?provider=gemini, or ?provider=volcengine",
       },
       { status: 400 }
     );
@@ -1288,6 +1392,9 @@ export async function GET(
       // WaveSpeed uses dynamic schemas from API, with static fallback
       const apiKey = request.headers.get("X-WaveSpeed-Key") || process.env.WAVESPEED_API_KEY || null;
       result = await fetchWaveSpeedSchema(decodedModelId, apiKey);
+    } else if (provider === "volcengine") {
+      // Volcengine uses hardcoded schemas (no schema discovery API)
+      result = getVolcengineSchema(decodedModelId);
     } else {
       // User-provided key takes precedence over env variable
       const apiKey = request.headers.get("X-Fal-Key") || process.env.FAL_API_KEY || null;
