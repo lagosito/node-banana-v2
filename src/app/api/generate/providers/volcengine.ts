@@ -27,22 +27,20 @@ interface VolcengineCreateResponse {
   };
 }
 
-/**
- * Volcengine ARK API — Query task response
- * Format: { id, status, content: [{ type, video_url: { url } }], error: { message } }
- */
+/** Volcengine/BytePlus query task response */
 interface VolcengineQueryResponse {
   id?: string;
   status?: VolcengineStatus;
+  // BytePlus returns content as direct object: { video_url: "https://..." }
+  // May also be array in some cases: [{ type, video_url: { url } }]
   content?: Array<{
     type?: string;
-    video_url?: {
-      url?: string;
-    };
-    image_url?: {
-      url?: string;
-    };
-  }>;
+    video_url?: { url?: string };
+    image_url?: { url?: string };
+  }> | {
+    video_url?: string;
+    image_url?: string;
+  };
   error?: {
     message?: string;
     code?: string;
@@ -308,8 +306,17 @@ export async function generateWithVolcengine(
       if (currentStatus === "succeeded") {
         console.log(`[API:${requestId}] Volcengine task succeeded`);
         // Extract video URL from content
-        const videoContent = pollData.content?.find((c) => c.type === "video_url");
-        const videoUrl = videoContent?.video_url?.url;
+        // BytePlus returns content as object: { video_url: "https://..." }
+        // Not as array like: [{ type: "video_url", video_url: { url: "..." } }]
+        let videoUrl: string | undefined;
+        if (pollData.content && typeof pollData.content === 'object' && !Array.isArray(pollData.content)) {
+          // Direct object format: { video_url: "https://..." }
+          videoUrl = (pollData.content as Record<string, unknown>).video_url as string;
+        } else if (Array.isArray(pollData.content)) {
+          // Array format: [{ type: "video_url", video_url: { url: "..." } }]
+          const videoContent = pollData.content.find((c) => c.type === "video_url");
+          videoUrl = videoContent?.video_url?.url;
+        }
 
         if (!videoUrl) {
           console.error(`[API:${requestId}] No video URL in succeeded response. Response: ${JSON.stringify(pollData).substring(0, 500)}`);
