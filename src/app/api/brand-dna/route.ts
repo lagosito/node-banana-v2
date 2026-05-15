@@ -17,6 +17,23 @@ import { generatePersonas, extractFullIntelligence } from '@/lib/brand-dna/perso
 import { discoverLookalikes } from '@/lib/brand-dna/lookalike-discovery'
 import type { ICPProfile, SignalType } from '@/lib/brand-dna/types'
 
+const CORS_HEADERS: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Max-Age': '86400',
+}
+
+function corsJson(data: any, init?: ResponseInit) {
+  const res = NextResponse.json(data, init)
+  Object.entries(CORS_HEADERS).forEach(([k, v]) => res.headers.set(k, v))
+  return res
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: CORS_HEADERS })
+}
+
 export async function POST(req: NextRequest) {
   const startTime = Date.now()
 
@@ -40,7 +57,7 @@ export async function POST(req: NextRequest) {
     } = body
 
     if (!url || typeof url !== 'string') {
-      return NextResponse.json(
+      return corsJson(
         { error: 'Missing required field: url (string)' },
         { status: 400 }
       )
@@ -71,7 +88,7 @@ export async function POST(req: NextRequest) {
         lookalikes = lookalikeResult.lookalikes
       }
 
-      return NextResponse.json({
+      return corsJson({
         brand_dna: result.brandDNA,
         icp_score: icpScore,
         signals: result.signals,
@@ -133,7 +150,7 @@ export async function POST(req: NextRequest) {
 
     const processingTime = Date.now() - startTime
 
-    return NextResponse.json({
+    return corsJson({
       brand_dna: brandDNA,
       icp_score: icpScore,
       ...(signals && { signals }),
@@ -146,20 +163,20 @@ export async function POST(req: NextRequest) {
     console.error('[brand-dna] Error:', error)
 
     if (error.message?.includes('OPENROUTER_API_KEY')) {
-      return NextResponse.json(
+      return corsJson(
         { error: 'Server configuration error: missing API key' },
         { status: 500 }
       )
     }
 
     if (error.message?.includes('JSON')) {
-      return NextResponse.json(
+      return corsJson(
         { error: 'Failed to parse AI response. Please try again.' },
         { status: 502 }
       )
     }
 
-    return NextResponse.json(
+    return corsJson(
       { error: error.message ?? 'Internal server error' },
       { status: 500 }
     )
