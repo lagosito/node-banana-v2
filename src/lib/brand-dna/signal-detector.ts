@@ -118,7 +118,11 @@ class DuckDuckGoSearchProvider implements SearchProvider {
 
 function getSearchProvider(): SearchProvider {
   const tavilyKey = process.env.TAVILY_API_KEY
-  if (tavilyKey) return new TavilySearchProvider(tavilyKey)
+  if (tavilyKey) {
+    console.log('[signal-detector] Using Tavily search provider')
+    return new TavilySearchProvider(tavilyKey)
+  }
+  console.log('[signal-detector] Using DuckDuckGo fallback (no TAVILY_API_KEY)')
   return new DuckDuckGoSearchProvider()
 }
 
@@ -388,7 +392,12 @@ export async function detectSignals(
     )
 
     searchData = searchResults
-      .filter((r): r is PromiseFulfilledResult<RawSignalData> => r.status === 'fulfilled')
+      .filter((r): r is PromiseFulfilledResult<RawSignalData> => {
+        if (r.status === 'rejected') {
+          console.warn('[signal-detector] Search failed:', r.reason?.message ?? r.reason)
+        }
+        return r.status === 'fulfilled'
+      })
       .map(r => r.value)
   }
 
