@@ -119,7 +119,7 @@ class DuckDuckGoSearchProvider implements SearchProvider {
 function getSearchProvider(): SearchProvider {
   const tavilyKey = process.env.TAVILY_API_KEY
   if (tavilyKey) {
-    console.log('[signal-detector] Using Tavily search provider')
+    console.log(`[signal-detector] Using Tavily (key: ${tavilyKey.slice(0,8)}...${tavilyKey.slice(-4)}, len=${tavilyKey.length})`)
     return new TavilySearchProvider(tavilyKey)
   }
   console.log('[signal-detector] Using DuckDuckGo fallback (no TAVILY_API_KEY)')
