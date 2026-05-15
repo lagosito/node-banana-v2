@@ -330,6 +330,84 @@ Rules:
   }
 }
 
+// ─── LLM Knowledge Fallback (when search APIs unavailable) ────────────────
+
+async function generateSignalsFromKnowledge(dna: BrandDNA): Promise<CompanySignal[]> {
+  const apiKey = getApiKey()
+
+  const prompt = `Based on your knowledge of ${dna.company_name} (${dna.industry}, ${dna.primary_region}), identify likely company signals from the last 12 months.
+
+Company Profile:
+- Name: ${dna.company_name}
+- Industry: ${dna.industry}${dna.industry_sub ? ` (${dna.industry_sub})` : ''}
+- Description: ${dna.description}
+- Products: ${dna.products.join(', ')}
+- Competitors: ${dna.competitors.join(', ')}
+- Region: ${dna.primary_region}
+
+For each signal you can reasonably infer or know about, return:
+- type: "funding" | "hiring" | "leadership_change" | "product_launch" | "partnership" | "expansion" | "tech_adoption" | "content_activity"
+- detail: 1-2 sentence description
+- source_url: null (knowledge-based, not web-sourced)
+- detected_at: today's date
+- confidence: 0.3-0.6 (lower since no live verification)
+- relevance_score: 0-100
+
+Rules:
+- Only include signals you are reasonably confident about
+- Lower confidence (0.3-0.5) since these are knowledge-based, not verified
+- If the company is too small/unknown for you to have signal knowledge, return []
+- Return ONLY valid JSON array, no markdown`
+
+  const resp = await fetch(OPENROUTER_API_URL, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://elkiosk.ai',
+      'X-Title': 'El Kiosko Signal Detector (LLM Fallback)',
+    },
+    body: JSON.stringify({
+      model: DEFAULT_MODEL,
+      messages: [
+        { role: 'system', content: 'You are a company intelligence analyst. Return ONLY valid JSON array, no markdown.' },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.3,
+      max_tokens: 1500,
+      response_format: { type: 'json_object' },
+    }),
+    signal: AbortSignal.timeout(60000),
+  })
+
+  if (!resp.ok) return []
+
+  const data = await resp.json()
+  const content = data.choices?.[0]?.message?.content ?? '[]'
+
+  let jsonStr = content.trim()
+  if (jsonStr.startsWith('```json')) jsonStr = jsonStr.slice(7)
+  if (jsonStr.startsWith('```')) jsonStr = jsonStr.slice(3)
+  if (jsonStr.endsWith('```')) jsonStr = jsonStr.slice(0, -3)
+
+  try {
+    const parsed = JSON.parse(jsonStr.trim())
+    const signals = Array.isArray(parsed) ? parsed : parsed.signals ?? []
+    return signals
+      .filter((s: any) => s.type && s.detail)
+      .map((s: any) => ({
+        type: s.type as SignalType,
+        detail: s.detail,
+        source_url: s.source_url ?? undefined,
+        detected_at: s.detected_at ?? new Date().toISOString().split('T')[0],
+        confidence: Math.min(Math.max(Number(s.confidence) || 0.4, 0), 0.6),
+        relevance_score: Math.min(Math.max(Number(s.relevance_score) || 50, 0), 100),
+      }))
+  } catch {
+    return []
+  }
+}
+
 // ─── Main Signal Detection Pipeline ───────────────────────────────────────
 
 export interface SignalDetectionOptions {
@@ -406,7 +484,12 @@ export async function detectSignals(
   // Step 3: Analyze with Claude
   let signals: CompanySignal[] = []
   if (searchData.some(d => d.results.length > 0)) {
+    // Search returned results → analyze them
     signals = await analyzeSignalsWithClaude(brandDNA, searchData)
+  } else {
+    // No search results → use Claude's knowledge directly
+    console.log('[signal-detector] No search results, falling back to LLM knowledge')
+    signals = await generateSignalsFromKnowledge(brandDNA)
   }
 
   // Step 4: Filter and rank
