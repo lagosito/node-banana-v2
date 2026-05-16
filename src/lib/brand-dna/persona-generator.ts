@@ -29,7 +29,7 @@ function buildPersonaPrompt(dna: BrandDNA, signals?: CompanySignal[]): string {
     ? `\n\nRecent company signals:\n${signals.map(s => `- [${s.type}] ${s.detail} (confidence: ${s.confidence})`).join('\n')}`
     : ''
 
-  return `You are a B2B buyer persona expert. Generate 2-4 detailed buyer personas for outreach to this company.
+  return `You are a consumer insights expert. Generate 2-4 ideal customer profiles for this brand's END CUSTOMERS — the people who actually buy and use their products/services. These are NOT B2B buyers or leads. These are the real consumers this brand serves.
 
 Company Profile:
 - Name: ${dna.company_name}
@@ -39,39 +39,32 @@ Company Profile:
 - Services: ${dna.services.join(', ') || 'N/A'}
 - Value Props: ${dna.value_propositions.join(', ') || 'N/A'}
 - Target Audience: ${dna.target_audience}
-- GTM Playbook: ${dna.gtm_playbook}
+- Target Audiences: ${dna.target_audiences.join(', ') || 'N/A'}
 - Tone: ${dna.tone}
-- Pain Points: ${dna.pain_points.join(', ') || 'N/A'}
 - Competitors: ${dna.competitors.join(', ') || 'N/A'}
-- Digital Maturity: ${dna.digital_maturity.score}/100 (${dna.digital_maturity.grade})
-- Tech Stack: ${dna.tech_stack.raw.join(', ') || 'N/A'}
 - Region: ${dna.primary_region} (${dna.primary_country})${signalContext}
 
-For each persona, return a JSON object with:
-- name: fictional but realistic name
-- role: job title (be specific to the company's likely org structure)
-- seniority: "C-Level" | "VP" | "Director" | "Manager" | "Individual Contributor"
-- department: "Marketing" | "Sales" | "Product" | "Engineering" | "Operations" | "Finance" | "HR" | "Executive"
-- age_range: e.g. "35-45"
-- background: 2-3 sentence professional background
-- goals: array of 3-4 professional goals
-- pain_points: array of 3-4 specific pain points this persona faces daily
-- buying_triggers: array of 3-4 events/situations that would make them buy
-- objections: array of 3-4 likely objections to a content/marketing service
-- objection_responses: array of responses matching each objection
-- content_preferences: array of content types they consume (e.g. "case studies", "LinkedIn posts", "webinars")
-- communication_style: how to talk to them (e.g. "data-driven, ROI-focused, no fluff")
-- outreach_angle: specific hook for first contact (reference their company, industry, or recent signals)
-- preferred_channels: array of outreach channels (e.g. "LinkedIn DM", "Email", "Referral")
-- decision_power: "budget owner" | "influencer" | "end user" | "gatekeeper"
-- estimated_budget_authority: "< €5K" | "€5-20K" | "€20-50K" | "> €50K"
+For each customer profile, return a JSON object with:
+- type_label: a short descriptive label (e.g. "The busy professional", "The conscious family", "The digital native", "The health-conscious pet owner"). NOT a name like "Markus Weber".
+- emoji: a single emoji that represents this customer type (e.g. "🏠", "👨‍👩‍👧", "🧑‍💻", "🐕")
+- description: one sentence in natural language describing who they are and what matters to them. Example: "Men 30-45, mid-to-high income, shops online for convenience, values premium quality without having to research."
+- age_range: e.g. "30-45"
+- income_level: e.g. "mid-to-high income", "budget-conscious", "affluent"
+- lifestyle: 1-2 sentences about their daily life, habits, and values as a CONSUMER
+- goals: array of 3-4 things they want as consumers (NOT business goals). Example: "Keep my pet healthy with quality food", "Save time on shopping"
+- pain_points: array of 3-4 things that frustrate them as CONSUMERS of this type of product/service. Example: "No time to compare different shops", "Hard to know if premium is worth the price"
+- buying_triggers: array of 3-4 situations that make them buy. Example: "Running out of pet food", "Seeing a recommendation from a trusted source"
+- objections: array of 3-4 things that hold them back from buying. Example: "Is the quality really better than the discounter?", "Don't want to commit to a subscription"
+- preferred_channels: array of where they spend time (e.g. "Instagram", "Google Search", "YouTube", "Newsletter", "TikTok"). Consumer channels, NOT B2B outreach channels.
+- content_preferences: array of content types they consume (e.g. "product reviews", "how-to videos", "comparison articles", "social media stories")
 
 Rules:
-- Base personas on the actual company profile, not generic templates
-- At least one persona should be a decision maker (C-Level or VP)
-- At least one persona should be an end user or implementer
-- Outreach angles should reference specific company details
-- Pain points should be specific to their industry and digital maturity level
+- Think from the CONSUMER's perspective, not the company's perspective
+- These are people who BUY FROM the company, not people who buy the company
+- Pain points should be about their consumer experience, not about internal business problems
+- NO B2B language: no "outreach", "lead", "prospect", "budget authority", "decision maker"
+- NO invented names — use descriptive type labels only
+- Base profiles on the actual company's target audience, products, and market
 - Return ONLY valid JSON array, no markdown, no explanation`
 }
 
@@ -93,7 +86,7 @@ async function generatePersonasWithClaude(prompt: string): Promise<BuyerPersona[
       messages: [
         {
           role: 'system',
-          content: 'You are a B2B buyer persona expert specializing in DACH market companies. Generate realistic, actionable personas. Return ONLY valid JSON array, no markdown.',
+          content: 'You are a consumer insights expert specializing in DACH market brands. Generate realistic ideal customer profiles that describe the END CONSUMERS of a brand — the people who buy and use their products. Return ONLY valid JSON array, no markdown.',
         },
         { role: 'user', content: prompt },
       ],
@@ -123,23 +116,18 @@ async function generatePersonasWithClaude(prompt: string): Promise<BuyerPersona[
     const personas = Array.isArray(parsed) ? parsed : parsed.personas ?? []
 
     return personas.map((p: any) => ({
-      name: p.name ?? 'Unknown',
-      role: p.role ?? 'Unknown',
-      seniority: p.seniority ?? 'Manager',
-      department: p.department ?? 'Marketing',
-      age_range: p.age_range ?? '30-40',
-      background: p.background ?? '',
+      type_label: p.type_label ?? 'The customer',
+      emoji: p.emoji ?? '👤',
+      description: p.description ?? '',
+      age_range: p.age_range ?? '30-45',
+      income_level: p.income_level ?? 'mid-income',
+      lifestyle: p.lifestyle ?? '',
       goals: Array.isArray(p.goals) ? p.goals : [],
       pain_points: Array.isArray(p.pain_points) ? p.pain_points : [],
       buying_triggers: Array.isArray(p.buying_triggers) ? p.buying_triggers : [],
       objections: Array.isArray(p.objections) ? p.objections : [],
-      objection_responses: Array.isArray(p.objection_responses) ? p.objection_responses : [],
+      preferred_channels: Array.isArray(p.preferred_channels) ? p.preferred_channels : ['Instagram', 'Google Search'],
       content_preferences: Array.isArray(p.content_preferences) ? p.content_preferences : [],
-      communication_style: p.communication_style ?? '',
-      outreach_angle: p.outreach_angle ?? '',
-      preferred_channels: Array.isArray(p.preferred_channels) ? p.preferred_channels : ['LinkedIn DM', 'Email'],
-      decision_power: p.decision_power ?? 'influencer',
-      estimated_budget_authority: p.estimated_budget_authority ?? '< €5K',
     }))
   } catch {
     return []

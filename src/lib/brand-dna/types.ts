@@ -162,24 +162,21 @@ export interface BrandDNAResponse {
   processing_time_ms: number
 }
 
-// ─── Buyer Persona (Phase 3) ──────────────────────────────────────────────
+// ─── Ideal Customer Profile (Phase 3) ────────────────────────────────────
+// These represent the END CUSTOMERS of the company that entered its URL,
+// NOT B2B buyers evaluating that company as a lead.
 
 export interface BuyerPersona {
-  name: string
-  role: string
-  seniority: 'C-Level' | 'VP' | 'Director' | 'Manager' | 'Individual Contributor'
-  department: 'Marketing' | 'Sales' | 'Product' | 'Engineering' | 'Operations' | 'Finance' | 'HR' | 'Executive'
-  age_range: string
-  background: string
-  goals: string[]
-  pain_points: string[]
-  buying_triggers: string[]
-  objections: string[]
-  objection_responses: string[]
-  content_preferences: string[]
-  communication_style: string
-  outreach_angle: string
-  preferred_channels: string[]
-  decision_power: 'budget owner' | 'influencer' | 'end user' | 'gatekeeper'
-  estimated_budget_authority: '< €5K' | '€5-20K' | '€20-50K' | '> €50K'
+  type_label: string        // e.g. "The busy professional", "The conscious family"
+  emoji: string             // e.g. "🏠", "👨‍👩‍👧", "🧑‍💻"
+  description: string       // One-sentence natural language profile
+  age_range: string         // e.g. "30-45"
+  income_level: string      // e.g. "mid-to-high income"
+  lifestyle: string         // 1-2 sentence description of who they are
+  goals: string[]           // What they want (consumer goals, not business goals)
+  pain_points: string[]     // What frustrates them as consumers
+  buying_triggers: string[] // What makes them buy
+  objections: string[]      // What holds them back
+  preferred_channels: string[] // Where to reach them (Instagram, Google, etc.)
+  content_preferences: string[] // What content they consume
 }
