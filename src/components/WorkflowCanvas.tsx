@@ -1986,7 +1986,7 @@ export function WorkflowCanvas() {
         <ProjectSetupModal
           isOpen={showNewProjectSetup}
           mode="new"
-          onSave={async (id, name, directoryPath) => {
+          onSave={async (id, name, directoryPath, clientId, clientName) => {
             setWorkflowMetadata(id, name, directoryPath);
             setShowNewProjectSetup(false);
             // Persist board to Supabase
@@ -1994,12 +1994,12 @@ export function WorkflowCanvas() {
               const res = await fetch("/api/boards", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ boardName: name, workflowData: null }),
+                body: JSON.stringify({ boardName: name, clientId, clientName, workflowData: null }),
               });
               if (res.ok) {
                 const data = await res.json();
                 if (data.board?.id) {
-                  setBoardAssociation(data.board.id, "");
+                  setBoardAssociation(data.board.id, clientName || "");
                 }
               }
             } catch {
