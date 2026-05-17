@@ -309,6 +309,7 @@ export function WorkflowCanvas() {
   const setShortcutsDialogOpen = useWorkflowStore((state) => state.setShortcutsDialogOpen);
   const regenerateNode = useWorkflowStore((state) => state.regenerateNode);
   const clearWorkflow = useWorkflowStore((state) => state.clearWorkflow);
+  const setBoardAssociation = useWorkflowStore((state) => state.setBoardAssociation);
   const setHoveredNodeId = useWorkflowStore((state) => state.setHoveredNodeId);
   const openAnnotationModal = useAnnotationStore((state) => state.openModal);
   const { screenToFlowPosition, getViewport, zoomIn, zoomOut, setViewport, setCenter } = useReactFlow();
@@ -1985,9 +1986,25 @@ export function WorkflowCanvas() {
         <ProjectSetupModal
           isOpen={showNewProjectSetup}
           mode="new"
-          onSave={(id, name, directoryPath) => {
+          onSave={async (id, name, directoryPath) => {
             setWorkflowMetadata(id, name, directoryPath);
             setShowNewProjectSetup(false);
+            // Persist board to Supabase
+            try {
+              const res = await fetch("/api/boards", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ boardName: name, workflowData: null }),
+              });
+              if (res.ok) {
+                const data = await res.json();
+                if (data.board?.id) {
+                  setBoardAssociation(data.board.id, "");
+                }
+              }
+            } catch {
+              // Non-critical: board works locally even if cloud save fails
+            }
           }}
           onClose={() => {
             setShowNewProjectSetup(false);

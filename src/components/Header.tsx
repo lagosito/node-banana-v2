@@ -268,19 +268,37 @@ export function Header() {
                     )}
                   </button>
                   {boardId && (
-                    <button
-                      onClick={saveToBoard}
-                      disabled={isSaving}
-                      className="relative theme-btn-ghost p-1.5 rounded transition-colors disabled:opacity-50"
-                      title={isSaving ? "Saving..." : `Save to Airtable (${boardClientName || "board"})`}
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0 3 3m-3-3-3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.233-2.33 3 3 0 0 1 3.758 3.848A3.752 3.752 0 0 1 18 19.5H6.75Z" />
-                      </svg>
-                      {hasUnsavedChanges && !isSaving && (
-                        <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-blue-500 ring-2 ring-[var(--c-header-bg)]" />
-                      )}
-                    </button>
+                    <>
+                      <button
+                        onClick={saveToBoard}
+                        disabled={isSaving}
+                        className="relative theme-btn-ghost p-1.5 rounded transition-colors disabled:opacity-50"
+                        title={isSaving ? "Saving..." : `Save to cloud (${boardClientName || "board"})`}
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0 3 3m-3-3-3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.233-2.33 3 3 0 0 1 3.758 3.848A3.752 3.752 0 0 1 18 19.5H6.75Z" />
+                        </svg>
+                        {hasUnsavedChanges && !isSaving && (
+                          <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-blue-500 ring-2 ring-[var(--c-header-bg)]" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => {
+                          const url = `${window.location.origin}/board/${boardId}`;
+                          navigator.clipboard.writeText(url).then(() => {
+                            // Brief visual feedback
+                            const el = document.activeElement as HTMLButtonElement;
+                            if (el) { el.title = "Link copied!"; setTimeout(() => { el.title = "Share board link"; }, 2000); }
+                          });
+                        }}
+                        className="theme-btn-ghost p-1.5 rounded transition-colors"
+                        title="Share board link"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z" />
+                        </svg>
+                      </button>
+                    </>
                   )}
                   {saveDirectoryPath && (
                     <button onClick={handleOpenDirectory} className="theme-btn-ghost p-1.5 rounded transition-colors" title="Open project folder">

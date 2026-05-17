@@ -117,9 +117,9 @@ export async function POST(request: NextRequest) {
 
     const { boardName, clientId, clientName, status, notes, workflowData } = body;
 
-    if (!boardName || !clientId || !clientName) {
+    if (!boardName) {
       return NextResponse.json(
-        { error: "boardName, clientId, and clientName are required" },
+        { error: "boardName is required" },
         { status: 400 }
       );
     }
@@ -127,8 +127,8 @@ export async function POST(request: NextRequest) {
     const now = new Date().toISOString();
     const insertData: Record<string, unknown> = {
       board_name: boardName,
-      client_id: clientId,
-      client_name: clientName,
+      client_id: clientId || "personal",
+      client_name: clientName || "",
       status: status || "draft",
       notes: notes || "",
       created_at: now,
