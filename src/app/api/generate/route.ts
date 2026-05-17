@@ -18,7 +18,7 @@ import { generateWithReplicate } from "./providers/replicate";
 import { clearFalInputMappingCache as _clearFalInputMappingCache, generateWithFalQueue } from "./providers/fal";
 import { generateWithKie } from "./providers/kie";
 import { generateWithWaveSpeed } from "./providers/wavespeed";
-import { generateWithVolcengine } from "./providers/volcengine";
+import { submitVolcengineTask } from "./providers/volcengine";
 
 // Re-export for backward compatibility (test file imports from route)
 export const clearFalInputMappingCache = _clearFalInputMappingCache;
@@ -501,7 +501,9 @@ export async function POST(request: NextRequest) {
         dynamicInputs: processedDynamicInputs,
       };
 
-      const result = await generateWithVolcengine(requestId, volcengineApiKey || "", genInput, byteplusApiKey || undefined);
+      // Async submit pattern: submit task and return taskId immediately.
+      // The frontend polls GET /api/generate/status?taskId=xxx for completion.
+      const result = await submitVolcengineTask(requestId, volcengineApiKey || "", genInput, byteplusApiKey || undefined);
 
       if (!result.success) {
         return NextResponse.json<GenerateResponse>(
@@ -513,16 +515,14 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Return first output
-      const output = result.outputs?.[0];
-      if (!output?.data && !output?.url) {
-        return NextResponse.json<GenerateResponse>(
-          { success: false, error: "No output in generation result" },
-          { status: 500 }
-        );
-      }
-
-      return buildMediaResponse(output);
+      // Return taskId immediately — no polling in the POST handler
+      return NextResponse.json({
+        success: true,
+        taskId: result.taskId,
+        status: result.status || "processing",
+        provider: "volcengine",
+        model: result.model || selectedModel.displayName,
+      });
     }
 
     // Default: Use Gemini
