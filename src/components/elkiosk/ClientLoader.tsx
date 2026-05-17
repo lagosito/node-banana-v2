@@ -13,6 +13,7 @@ const TIER_WORKFLOWS: Record<string, string> = {
 };
 
 const TIER_LABEL: Record<string, string> = {
+  blank:     "📄 Blank (empty canvas)",
   starter:   "🌱 Starter  (€349 — 10 posts)",
   essential: "⭐ Essential (€599 — 20 posts)",
   advanced:  "🚀 Advanced  (€999 — 40+ posts)",
@@ -111,7 +112,7 @@ export function ClientLoader() {
   const [clients, setClients] = useState<ClientEntry[]>([]);
   const [selectedName, setSelectedName] = useState("");
   const [selectedClientId, setSelectedClientId] = useState("");
-  const [selectedTier, setSelectedTier] = useState("starter");
+  const [selectedTier, setSelectedTier] = useState("blank");
   const [loadingClients, setLoadingClients] = useState(false);
   const [loadingClient, setLoadingClient] = useState(false);
   const [currentClient, setCurrentClient] = useState<ClientBrandDNA | null>(null);
@@ -183,17 +184,20 @@ export function ClientLoader() {
         const wRes = await fetch(workflowUrl);
         if (wRes.ok) {
           const workflow = (await wRes.json()) as WorkflowFile;
-          workflow.name = `${client.clientName} — ${selectedTier.charAt(0).toUpperCase() + selectedTier.slice(1)}`;
+          workflow.name = `${client.clientName} — ${selectedTier === "blank" ? "Blank" : selectedTier.charAt(0).toUpperCase() + selectedTier.slice(1)}`;
           await loadWorkflow(workflow);
           setTimeout(() => injectBrandDNA(client), 100);
         }
       } else {
+        // No template (blank tier) — just inject brand DNA
+        useWorkflowStore.getState().setWorkflowName(`${client.clientName} — Blank`);
         injectBrandDNA(client);
       }
 
       // Create a board in Airtable so auto-save works
       try {
-        const boardName = `${client.clientName} — ${selectedTier.charAt(0).toUpperCase() + selectedTier.slice(1)}`;
+        const tierLabel = selectedTier === "blank" ? "Blank" : selectedTier.charAt(0).toUpperCase() + selectedTier.slice(1);
+        const boardName = `${client.clientName} — ${tierLabel}`;
         const clientEntry = clients.find(c => c.clientName === selectedName);
         const clientId = clientEntry?.id || selectedName;
         const boardRes = await fetch("/api/boards", {
