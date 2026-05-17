@@ -125,6 +125,53 @@ export async function executeGenerateVideo(
 
     const result = await response.json();
 
+    // Handle async volcengine polling
+    if (result.success && result.status === "processing" && result.taskId) {
+      const maxPollTime = 5 * 60 * 1000; // 5 minutes
+      const pollInterval = 3000; // 3 seconds
+      const startTime = Date.now();
+
+      updateNodeData(node.id, {
+        status: "loading",
+        error: null,
+      });
+
+      while (Date.now() - startTime < maxPollTime) {
+        // Check for abort
+        if (signal?.aborted) {
+          throw new DOMException("Aborted", "AbortError");
+        }
+
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+
+        const statusResponse = await fetch(`/api/generate/status?taskId=${result.taskId}`, {
+          ...(signal ? { signal } : {}),
+        });
+
+        if (!statusResponse.ok) {
+          const statusError = await statusResponse.text();
+          throw new Error(`Status check failed: ${statusError}`);
+        }
+
+        const statusResult = await statusResponse.json();
+
+        if (statusResult.status === "succeeded" && statusResult.videoUrl) {
+          // Success! Set result for the existing success handling below
+          result.video = statusResult.videoUrl;
+          result.videoUrl = statusResult.videoUrl;
+          break;
+        } else if (statusResult.status === "failed") {
+          throw new Error(statusResult.error || "Video generation failed on server");
+        }
+        // If still processing, continue polling
+      }
+
+      // If we exited the loop without setting video, it timed out
+      if (!result.video && !result.videoUrl) {
+        throw new Error("Video generation timed out after 5 minutes");
+      }
+    }
+
     // Handle video response (video or videoUrl field)
     const videoData = result.video || result.videoUrl;
     if (result.success && (videoData || result.image)) {
