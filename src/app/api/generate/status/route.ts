@@ -86,6 +86,11 @@ export async function GET(request: NextRequest) {
     const pollData = await pollResponse.json();
     const currentStatus: string = pollData.status || "unknown";
 
+    console.log(`[Status] Task ${taskId} — status: "${currentStatus}", content type: ${typeof pollData.content}, is array: ${Array.isArray(pollData.content)}`);
+    if (currentStatus === "succeeded") {
+      console.log(`[Status] Task ${taskId} — succeeded content: ${JSON.stringify(pollData.content).substring(0, 500)}`);
+    }
+
     // Handle terminal states
     if (currentStatus === "succeeded") {
       // Extract video URL from content
