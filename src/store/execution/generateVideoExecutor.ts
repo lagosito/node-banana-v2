@@ -127,8 +127,8 @@ export async function executeGenerateVideo(
 
     // Handle async volcengine polling
     if (result.success && result.status === "processing" && result.taskId) {
-      const maxPollTime = 5 * 60 * 1000; // 5 minutes
-      const pollInterval = 3000; // 3 seconds
+      const maxPollTime = 10 * 60 * 1000; // 10 minutes (Seedance can take 2-8 min for longer videos)
+      const pollInterval = 5000; // 5 seconds (reduce API calls)
       const startTime = Date.now();
 
       updateNodeData(node.id, {
@@ -168,7 +168,7 @@ export async function executeGenerateVideo(
 
       // If we exited the loop without setting video, it timed out
       if (!result.video && !result.videoUrl) {
-        throw new Error("Video generation timed out after 5 minutes");
+        throw new Error("Video generation timed out after 10 minutes. Try a shorter duration or the fast model.");
       }
     }
 
