@@ -155,9 +155,9 @@ export async function executeGenerateVideo(
 
         const statusResult = await statusResponse.json();
 
-        if (statusResult.status === "succeeded" && statusResult.videoUrl) {
-          // Success! Set result for the existing success handling below
-          result.video = statusResult.videoUrl;
+        if (statusResult.status === "succeeded" && (statusResult.video || statusResult.videoUrl)) {
+          // Success! video is base64 data URL (preferred), videoUrl is fallback
+          result.video = statusResult.video || statusResult.videoUrl;
           result.videoUrl = statusResult.videoUrl;
           break;
         } else if (statusResult.status === "failed") {
