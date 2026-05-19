@@ -60,8 +60,8 @@ export default function SharedBoardPage() {
     return (
       <div className="h-screen flex items-center justify-center" style={{ background: "var(--c-bg, #1a1a1a)", color: "var(--c-text, #e0e0e0)" }}>
         <div className="text-center">
-          <div className="text-6xl mb-4">🍌</div>
-          <h1 className="text-xl font-semibold mb-2">Node Banana</h1>
+          <img src="/icon.png" alt="El Kiosk" className="w-16 h-16 mx-auto mb-4 rounded-lg" />
+          <h1 className="text-xl font-semibold mb-2">El Kiosk</h1>
           <p className="text-[var(--c-text-secondary, #999)] mb-4">{error}</p>
           <button
             onClick={() => router.push("/")}
@@ -77,7 +77,7 @@ export default function SharedBoardPage() {
   return (
     <div className="h-screen flex items-center justify-center" style={{ background: "var(--c-bg, #1a1a1a)", color: "var(--c-text, #e0e0e0)" }}>
       <div className="text-center">
-        <div className="text-6xl mb-4 animate-bounce">🍌</div>
+        <img src="/icon.png" alt="El Kiosk" className="w-16 h-16 mx-auto mb-4 rounded-lg animate-pulse" />
         <h1 className="text-xl font-semibold mb-2">Loading board...</h1>
         <p className="text-[var(--c-text-secondary, #999)]">Setting up the workflow editor</p>
       </div>
