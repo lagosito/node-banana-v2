@@ -122,6 +122,7 @@ export function Header() {
   const [showProjectModal, setShowProjectModal] = useState(false);
   const [projectModalMode, setProjectModalMode] = useState<"new" | "settings">("new");
   const [showWorkflowBrowser, setShowWorkflowBrowser] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
 
   const isProjectConfigured = !!workflowName;
   const canSave = !!(workflowId && workflowName && saveDirectoryPath);
@@ -286,16 +287,19 @@ export function Header() {
                         onClick={() => {
                           const url = `${window.location.origin}/board/${boardId}`;
                           navigator.clipboard.writeText(url).then(() => {
-                            // Brief visual feedback
-                            const el = document.activeElement as HTMLButtonElement;
-                            if (el) { el.title = "Link copied!"; setTimeout(() => { el.title = "Share board link"; }, 2000); }
+                            setShareCopied(true);
+                            setTimeout(() => setShareCopied(false), 2000);
                           });
                         }}
-                        className="theme-btn-ghost p-1.5 rounded transition-colors"
-                        title="Share board link"
+                        className={`p-1.5 rounded transition-all ${shareCopied ? "bg-green-600 text-white" : "theme-btn-ghost"}`}
+                        title={shareCopied ? "Link copied!" : "Share board link"}
                       >
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z" />
+                          {shareCopied ? (
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                          ) : (
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z" />
+                          )}
                         </svg>
                       </button>
                     </>

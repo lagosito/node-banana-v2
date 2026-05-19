@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useWorkflowStore } from "@/store/workflowStore";
+import { useToast } from "@/components/Toast";
 
 interface ClientInfo {
   id: string;
@@ -67,6 +68,9 @@ export default function ClientDashboard() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newBoardName, setNewBoardName] = useState("");
   const [creating, setCreating] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<BoardInfo | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const toast = useToast();
 
   // Load clients
   useEffect(() => {
@@ -153,6 +157,36 @@ export default function ClientDashboard() {
       setCreating(false);
     }
   }, [newBoardName, selectedClientId, selectedClient, handleOpenBoard]);
+
+  // Delete board
+  const handleDeleteBoard = useCallback(async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/boards?id=${deleteTarget.id}`, { method: "DELETE" });
+      if (res.ok) {
+        toast.show(`"${deleteTarget.boardName}" deleted`, "success");
+        setBoards((prev) => prev.filter((b) => b.id !== deleteTarget.id));
+      } else {
+        toast.show("Failed to delete board", "error");
+      }
+    } catch {
+      toast.show("Failed to delete board", "error");
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
+    }
+  }, [deleteTarget, toast]);
+
+  // Share board link
+  const handleShareBoard = useCallback((board: BoardInfo, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const url = `${window.location.origin}/board/${board.id}`;
+    navigator.clipboard.writeText(url).then(
+      () => toast.show("Link copied to clipboard", "success"),
+      () => toast.show("Failed to copy link", "error")
+    );
+  }, [toast]);
 
   return (
     <div className="min-h-screen bg-neutral-900 text-neutral-100">
@@ -282,11 +316,14 @@ export default function ClientDashboard() {
             {filteredBoards.map((board) => {
               const statusStyle = STATUS_COLORS[board.status] || STATUS_COLORS.draft;
               return (
-                <button
+                <div
                   key={board.id}
-                  onClick={() => handleOpenBoard(board)}
                   className="text-left bg-neutral-800 border border-neutral-700 rounded-xl p-4 hover:border-neutral-500 hover:bg-neutral-750 transition-all group"
                 >
+                  <button
+                    onClick={() => handleOpenBoard(board)}
+                    className="w-full text-left"
+                  >
                   <div className="flex items-start justify-between mb-3">
                     <h3 className="font-medium text-sm group-hover:text-blue-400 transition-colors line-clamp-2">
                       {board.boardName}
@@ -296,13 +333,35 @@ export default function ClientDashboard() {
                       {board.status}
                     </span>
                   </div>
+                  </button>
                   {!selectedClientId && (
                     <p className="text-xs text-neutral-500 mb-2">{board.clientName}</p>
                   )}
-                  <p className="text-xs text-neutral-600">
+                  <p className="text-xs text-neutral-600 mb-3">
                     Updated {timeAgo(board.updatedAt || board.createdAt)}
                   </p>
-                </button>
+                  <div className="flex items-center gap-1 pt-2 border-t border-neutral-700/50">
+                    <button
+                      onClick={(e) => handleShareBoard(board, e)}
+                      className="flex items-center gap-1 px-2 py-1 rounded text-xs text-neutral-500 hover:text-blue-400 hover:bg-neutral-700 transition-colors"
+                      title="Share board link"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z" />
+                      </svg>
+                      Share
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setDeleteTarget(board); }}
+                      className="flex items-center gap-1 px-2 py-1 rounded text-xs text-neutral-500 hover:text-red-400 hover:bg-neutral-700 transition-colors ml-auto"
+                      title="Delete board"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
               );
             })}
           </div>
@@ -339,6 +398,33 @@ export default function ClientDashboard() {
                 className="px-5 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500 rounded-lg text-sm font-medium transition-colors"
               >
                 {creating ? "Creating..." : "Create & Open"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setDeleteTarget(null)}>
+          <div className="bg-neutral-800 border border-neutral-700 rounded-xl p-6 w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold mb-2">Delete Board</h2>
+            <p className="text-sm text-neutral-400 mb-6">
+              Are you sure you want to delete <strong>"{deleteTarget.boardName}"</strong>? This cannot be undone.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="px-4 py-2 text-sm text-neutral-400 hover:text-neutral-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteBoard}
+                disabled={deleting}
+                className="px-5 py-2 bg-red-600 hover:bg-red-500 disabled:bg-neutral-700 disabled:text-neutral-500 rounded-lg text-sm font-medium transition-colors"
+              >
+                {deleting ? "Deleting..." : "Delete"}
               </button>
             </div>
           </div>
