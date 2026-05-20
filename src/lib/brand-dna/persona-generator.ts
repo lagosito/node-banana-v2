@@ -35,6 +35,7 @@ Company Profile:
 - Name: ${dna.company_name}
 - Industry: ${dna.industry}${dna.industry_sub ? ` (${dna.industry_sub})` : ''}
 - Description: ${dna.description}
+- Brand Statement: ${dna.brand_statement || 'N/A'}
 - Products: ${dna.products.join(', ') || 'N/A'}
 - Services: ${dna.services.join(', ') || 'N/A'}
 - Value Props: ${dna.value_propositions.join(', ') || 'N/A'}

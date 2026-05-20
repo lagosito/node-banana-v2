@@ -17,6 +17,7 @@ const BrandDNASchema = z.object({
   company_name: z.string(),
   company_url: z.string(),
   description: z.string(),
+  brand_statement: z.string(),
   industry: z.string(),
   industry_sub: z.string().optional(),
   product_type: z.string(),
@@ -249,6 +250,7 @@ Return a JSON object with these fields:
 - company_name: Official company name
 - company_url: Website URL
 - description: 2-3 sentence company description
+- brand_statement: CRITICAL — One single sentence in English that captures what this brand uniquely offers its ideal customer. This is NOT a generic description. It must feel like a tagline the customer would remember. Rules: (1) Be specific to THIS brand's actual offering — reference real products/services found on the site, (2) Highlight the unique differentiator — why choose THIS brand over competitors, (3) Speak FROM the customer's perspective — what THEY get, not what the company does, (4) NEVER use generic words like "premium", "quality", "serving customers", "excellence", "innovation" — these are banned. (5) Keep it under 20 words. Examples of GOOD brand statements: "Your morning routine, automated — fresh coffee before your feet hit the floor." (smart coffee maker), "Track every shipment in real time — no more calling customer service." (logistics SaaS), "Designer furniture without the designer price — direct from European workshops." (DTC furniture). Examples of BAD brand statements: "A premium brand serving discerning customers." (too generic), "Innovation and excellence in everything we do." (empty buzzwords), "We help businesses grow." (says nothing specific).
 - industry: Primary industry (e.g. "SaaS", "E-commerce", "Healthcare")
 - industry_sub: Sub-category (e.g. "Marketing Automation", "DTC Fashion")
 - product_type: SaaS, API, Platform, Marketplace, Agency, E-commerce, Service, etc.
@@ -296,7 +298,7 @@ async function extractWithClaude(prompt: string): Promise<Partial<BrandDNA>> {
       messages: [
         {
           role: 'system',
-          content: 'You are a company intelligence analyst. Extract structured data from website content. Return ONLY valid JSON, no markdown, no explanation.',
+          content: 'You are a company intelligence analyst. Extract structured data from website content. Return ONLY valid JSON, no markdown, no explanation. IMPORTANT: The brand_statement field must always be in English, regardless of the source website language.',
         },
         { role: 'user', content: prompt },
       ],
@@ -358,6 +360,7 @@ export async function extractBrandDNA(options: ExtractOptions): Promise<BrandDNA
     company_url: extracted.company_url ?? website.url,
     domain,
     description: extracted.description ?? website.description ?? '',
+    brand_statement: extracted.brand_statement ?? '',
     industry: extracted.industry ?? '',
     industry_sub: extracted.industry_sub,
     product_type: extracted.product_type ?? '',

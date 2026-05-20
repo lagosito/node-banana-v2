@@ -13,6 +13,7 @@ export interface BrandDNA {
   company_url: string
   domain: string
   description: string
+  brand_statement: string  // A single compelling sentence (in English) capturing why this brand matters
   
   // Classification
   industry: string
