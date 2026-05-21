@@ -38,7 +38,7 @@ interface MultiProviderGenerateRequest extends GenerateRequest {
 }
 
 
-function buildMediaResponse(output: { type: string; data: string; url?: string }): NextResponse {
+function buildMediaResponse(output: { type: string; data?: string; url?: string }): NextResponse {
   if (output.type === "3d") {
     return NextResponse.json<GenerateResponse>({
       success: true,

@@ -106,8 +106,8 @@ export interface GenerationOutput {
   outputs?: Array<{
     /** Type of output */
     type: "image" | "video" | "3d" | "audio";
-    /** Base64 data URL of the output (empty string for 3D/large video URL-only responses) */
-    data: string;
+    /** Base64 data URL of the output (undefined for 3D/large video URL-only responses) */
+    data?: string;
     /** Original URL if applicable (e.g., from provider CDN) */
     url?: string;
   }>;
