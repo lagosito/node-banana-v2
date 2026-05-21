@@ -8,6 +8,7 @@ import { NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { GenerateResponse, ModelType } from "@/types";
 import { GenerationOutput } from "@/lib/providers/types";
+import { put } from "@vercel/blob";
 
 /**
  * Map model types to Gemini model IDs
@@ -337,14 +338,18 @@ export async function generateWithGeminiVideo(
     const videoSizeMB = (videoBuffer.byteLength / (1024 * 1024)).toFixed(2);
     console.log(`[API:${requestId}] Video downloaded: ${videoSizeMB}MB`);
 
-    const base64Video = Buffer.from(videoBuffer).toString("base64");
-    const dataUrl = `data:video/mp4;base64,${base64Video}`;
+    // Upload to Vercel Blob to avoid exceeding Vercel's ~4.5MB response body limit
+    const blobFilename = `videos/${requestId}-${Date.now()}.mp4`;
+    const blob = await put(blobFilename, videoBuffer, {
+      access: "public",
+      contentType: "video/mp4",
+    });
 
-    console.log(`[API:${requestId}] SUCCESS - Returning ${videoSizeMB}MB video`);
+    console.log(`[API:${requestId}] SUCCESS - Uploaded ${videoSizeMB}MB video to blob: ${blob.url}`);
 
     return {
       success: true,
-      outputs: [{ type: "video", data: dataUrl }],
+      outputs: [{ type: "video", url: blob.url }],
     };
   } catch (error) {
     console.error(`[API:${requestId}] Failed to download video: ${error}`);
