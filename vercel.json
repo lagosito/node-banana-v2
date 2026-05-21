@@ -7,5 +7,15 @@
         { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" }
       ]
     }
-  ]
+  ],
+  "functions": {
+    "src/app/api/generate/route.ts": {
+      "bodySizeLimit": "50mb",
+      "maxDuration": 300
+    },
+    "src/app/api/save-generation/route.ts": {
+      "bodySizeLimit": "50mb",
+      "maxDuration": 300
+    }
+  }
 }
