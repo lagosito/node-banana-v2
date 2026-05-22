@@ -10,6 +10,7 @@ import type {
 } from "@/types";
 import { calculateGenerationCost } from "@/utils/costCalculator";
 import { buildGenerateHeaders } from "@/store/utils/buildApiHeaders";
+import { compressImages, compressDynamicInputs } from "@/utils/compressImage";
 import type { NodeExecutionContext } from "./types";
 
 export interface NanoBananaOptions {
@@ -94,8 +95,14 @@ export async function executeNanoBanana(
   const sanitizedDynamicInputs = { ...dynamicInputs };
   delete sanitizedDynamicInputs.prompt;
 
+  // Compress images before sending to avoid Vercel's ~4.5MB body limit
+  const [compressedImages, compressedDynamicInputs] = await Promise.all([
+    compressImages(images),
+    compressDynamicInputs(sanitizedDynamicInputs),
+  ]);
+
   const requestPayload = {
-    images,
+    images: compressedImages,
     prompt: promptText,
     aspectRatio: nodeData.aspectRatio,
     resolution: nodeData.resolution,
@@ -104,7 +111,7 @@ export async function executeNanoBanana(
     useImageSearch: nodeData.useImageSearch,
     selectedModel: nodeData.selectedModel,
     parameters: nodeData.parameters,
-    dynamicInputs: sanitizedDynamicInputs,
+    dynamicInputs: compressedDynamicInputs,
   };
 
   // Final guard: assert that prompt is a string before sending to API

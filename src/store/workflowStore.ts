@@ -30,6 +30,7 @@ import { UndoManager, UndoSnapshot, clonePreservingStrings } from "./undoHistory
 import { useToast } from "@/components/Toast";
 import { logger } from "@/utils/logger";
 import { externalizeWorkflowMedia, hydrateWorkflowMedia } from "@/utils/mediaStorage";
+import { compressImage } from "@/utils/compressImage";
 import { EditOperation, applyEditOperations as executeEditOps } from "@/lib/chat/editOperations";
 import {
   loadSaveConfigs,
@@ -2349,10 +2350,16 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
 
       // Save images separately if any
       if (Object.keys(extractedImages).length > 0) {
+        // Compress images before sending to avoid Vercel's ~4.5MB body limit
+        const compressedImages: Record<string, string> = {};
+        for (const [key, value] of Object.entries(extractedImages)) {
+          compressedImages[key] = await compressImage(value);
+        }
+
         const imgRes = await fetch("/api/board-images", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ boardId, images: extractedImages }),
+          body: JSON.stringify({ boardId, images: compressedImages }),
         });
         if (!imgRes.ok) {
           console.error("[saveToBoard] Failed to save images:", await imgRes.text());

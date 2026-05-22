@@ -7,6 +7,7 @@
 
 import type { Generate3DNodeData } from "@/types";
 import { buildGenerateHeaders } from "@/store/utils/buildApiHeaders";
+import { compressImages, compressDynamicInputs } from "@/utils/compressImage";
 import type { NodeExecutionContext } from "./types";
 
 export interface Generate3DOptions {
@@ -72,12 +73,18 @@ export async function executeGenerate3D(
   const provider = nodeData.selectedModel?.provider || "fal";
   const headers = buildGenerateHeaders(provider, providerSettings);
 
+  // Compress images before sending to avoid Vercel's ~4.5MB body limit
+  const [compressedImages, compressedDynamicInputs] = await Promise.all([
+    compressImages(images),
+    compressDynamicInputs(dynamicInputs),
+  ]);
+
   const requestPayload = {
-    images,
+    images: compressedImages,
     prompt: promptText || "",
     selectedModel: nodeData.selectedModel,
     parameters: nodeData.parameters,
-    dynamicInputs,
+    dynamicInputs: compressedDynamicInputs,
     mediaType: "3d" as const,
   };
 

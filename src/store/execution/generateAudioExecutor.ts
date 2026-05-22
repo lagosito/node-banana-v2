@@ -7,6 +7,7 @@
 
 import type { GenerateAudioNodeData } from "@/types";
 import { buildGenerateHeaders } from "@/store/utils/buildApiHeaders";
+import { compressDynamicInputs } from "@/utils/compressImage";
 import type { NodeExecutionContext } from "./types";
 
 export interface GenerateAudioOptions {
@@ -81,12 +82,15 @@ export async function executeGenerateAudio(
   const provider = nodeData.selectedModel.provider;
   const headers = buildGenerateHeaders(provider, providerSettings);
 
+  // Compress dynamic inputs before sending (images array is empty for audio)
+  const compressedDynamicInputs = await compressDynamicInputs(dynamicInputs);
+
   const requestPayload = {
     images: [],
     prompt: text,
     selectedModel: nodeData.selectedModel,
     parameters: nodeData.parameters,
-    dynamicInputs,
+    dynamicInputs: compressedDynamicInputs,
     mediaType: "audio" as const,
   };
 

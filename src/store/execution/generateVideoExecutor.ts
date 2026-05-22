@@ -7,6 +7,7 @@
 
 import type { GenerateVideoNodeData } from "@/types";
 import { buildGenerateHeaders } from "@/store/utils/buildApiHeaders";
+import { compressImages, compressDynamicInputs } from "@/utils/compressImage";
 import type { NodeExecutionContext } from "./types";
 
 export interface GenerateVideoOptions {
@@ -89,12 +90,18 @@ export async function executeGenerateVideo(
   const provider = nodeData.selectedModel.provider;
   const headers = buildGenerateHeaders(provider, providerSettings);
 
+  // Compress images before sending to avoid Vercel's ~4.5MB body limit
+  const [compressedImages, compressedDynamicInputs] = await Promise.all([
+    compressImages(images),
+    compressDynamicInputs(dynamicInputs),
+  ]);
+
   const requestPayload = {
-    images,
+    images: compressedImages,
     prompt: text,
     selectedModel: nodeData.selectedModel,
     parameters: nodeData.parameters,
-    dynamicInputs,
+    dynamicInputs: compressedDynamicInputs,
     mediaType: "video" as const,
   };
 

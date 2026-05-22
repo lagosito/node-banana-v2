@@ -7,6 +7,7 @@
 
 import type { LLMGenerateNodeData } from "@/types";
 import { buildLlmHeaders } from "@/store/utils/buildApiHeaders";
+import { compressImages } from "@/utils/compressImage";
 import type { NodeExecutionContext } from "./types";
 
 export interface LlmGenerateOptions {
@@ -61,12 +62,15 @@ export async function executeLlmGenerate(
   const headers = buildLlmHeaders(nodeData.provider, providerSettings);
 
   try {
+    // Compress images before sending to avoid Vercel's ~4.5MB body limit
+    const compressedImages = images.length > 0 ? await compressImages(images) : [];
+
     const response = await fetch("/api/llm", {
       method: "POST",
       headers,
       body: JSON.stringify({
         prompt: text,
-        ...(images.length > 0 && { images }),
+        ...(compressedImages.length > 0 && { images: compressedImages }),
         provider: nodeData.provider,
         model: nodeData.model,
         temperature: nodeData.temperature,
