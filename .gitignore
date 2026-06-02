@@ -49,4 +49,5 @@ logs/*.json
 # agents
 .agents/
 
-.superset/
+.superset/.env.production
+.env.vercel
