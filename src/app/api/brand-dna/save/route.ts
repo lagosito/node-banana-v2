@@ -52,6 +52,8 @@ interface SaveRequest {
   targetAudience?: string;
   changes?: string;
   brandDnaUrl?: string;
+  /** Raw Brand DNA JSON to persist in Airtable (optional) */
+  brandDnaData?: Record<string, unknown>;
 }
 
 export async function POST(req: NextRequest) {
@@ -68,14 +70,48 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as SaveRequest;
     const { clientId, email, brandName, tagline, colors, fonts, tone, targetAudience, changes, brandDnaUrl } = body;
-
     if (!email || !email.includes("@")) {
       return corsJson({ error: "Valid email required" }, { status: 400 });
     }
+    // ── Step 1: Create/update contact in Brevo ──
+    try {
+      const contactRes = await fetch(`${BREVO_API_URL}/contacts`, {
+        method: "POST",
+        headers: {
+          "api-key": brevoKey,
+          "Content-Type": "application/json",
+          accept: "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          attributes: {
+            FIRSTNAME: brandName || "",
+            LASTNAME: "",
+            SOURCE: "brand-dna",
+          },
+          listIds: [],
+          updateEnabled: true,
+        }),
+      });
+      if (!contactRes.ok) {
+        // 204 = already exists, 400 = duplicate — both are fine
+        const status = contactRes.status;
+        if (status !== 204 && status !== 400) {
+          console.warn("[brand-dna/save] Brevo contact warning:", status);
+        }
+      }
+    } catch (err) {
+      console.warn("[brand-dna/save] Brevo contact save failed:", err);
+    }
 
-    // ── Step 1: Update Airtable (if clientId provided) ──
+    // ── Step 2: Update Airtable (if clientId provided) ──
     if (clientId) {
       try {
+        const patchFields: Record<string, unknown> = { Email: email };
+        // Persist Brand DNA data if provided
+        if (body.brandDnaData) {
+          patchFields["Brand DNA"] = JSON.stringify(body.brandDnaData);
+        }
         const airtableRes = await fetch(
           `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_CLIENTS_TABLE}/${clientId}`,
           {
@@ -84,11 +120,7 @@ export async function POST(req: NextRequest) {
               Authorization: `Bearer ${airtableKey}`,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({
-              fields: {
-                Email: email,
-              },
-            }),
+            body: JSON.stringify({ fields: patchFields }),
           }
         );
 
@@ -144,7 +176,7 @@ export async function POST(req: NextRequest) {
 
     return corsJson({
       success: true,
-      message: "Brand DNA saved and email sent",
+      message: "Brand DNA saved, contact synced, and email sent",
       emailMessageId: brevoResult.messageId,
     });
   } catch (error: unknown) {

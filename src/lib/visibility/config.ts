@@ -8,10 +8,10 @@ const ConfigSchema = z.object({
   PERPLEXITY_API_KEY: z.string().optional(),
   PERPLEXITY_MODEL: z.string().default('sonar'),
 
-  GEMINI_API_KEY: z.string().min(1),
+  GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
 
-  ANTHROPIC_API_KEY: z.string().min(1),
+  ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_MODEL: z.string().default('claude-sonnet-4-6'),
 
   // Storage
