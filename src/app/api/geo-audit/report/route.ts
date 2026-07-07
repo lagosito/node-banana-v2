@@ -199,7 +199,8 @@ export async function POST(req: NextRequest) {
     }
 
     const pdfBytes = await pdf.save();
-    return new NextResponse(new Blob([pdfBytes], { type: "application/pdf" }), {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return new NextResponse(Buffer.from(pdfBytes) as any, {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
