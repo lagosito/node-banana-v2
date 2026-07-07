@@ -32,10 +32,41 @@ async function callGemini(prompt: string): Promise<ProviderResponse> {
   // Extract citations from grounding metadata
   const grounding = candidate?.groundingMetadata;
   const citations: string[] = [];
-  if (grounding?.groundingChunks) {
+  const seenDomains = new Set<string>();
+
+  // Method 1: groundingSupports maps text → source chunks with actual URIs
+  if (grounding?.groundingSupports) {
+    for (const support of grounding.groundingSupports) {
+      const segment = support?.groundingChunkIndices || [];
+      for (const idx of segment) {
+        const chunk = grounding.groundingChunks?.[idx];
+        const uri = chunk?.web?.uri;
+        if (uri) {
+          try {
+            const domain = new URL(uri).hostname.replace(/^www\./, "");
+            if (!seenDomains.has(domain) && !domain.includes("google.com")) {
+              seenDomains.add(domain);
+              citations.push(domain);
+            }
+          } catch { /* skip */ }
+        }
+      }
+    }
+  }
+
+  // Method 2: fallback — groundingChunks directly
+  if (citations.length === 0 && grounding?.groundingChunks) {
     for (const chunk of grounding.groundingChunks) {
       const uri = chunk?.web?.uri;
-      if (uri) citations.push(uri);
+      if (uri) {
+        try {
+          const domain = new URL(uri).hostname.replace(/^www\./, "");
+          if (!seenDomains.has(domain) && !domain.includes("google.com")) {
+            seenDomains.add(domain);
+            citations.push(domain);
+          }
+        } catch { /* skip */ }
+      }
     }
   }
 

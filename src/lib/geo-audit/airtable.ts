@@ -87,3 +87,23 @@ export async function getConfig(): Promise<GeoAuditConfig> {
     score_weight_sov: config.score_weight_sov ?? 10,
   };
 }
+
+export async function createFinding(
+  auditId: string,
+  finding: { category: string; finding: string; recommendation: string; priority: number }
+) {
+  return atFetch(`/${AIRTABLE_BASE_ID}/${T.FINDINGS}`, {
+    method: "POST",
+    body: JSON.stringify({
+      fields: {
+        "Finding Title": finding.finding.substring(0, 80),
+        Audit: [auditId],
+        Category: finding.category,
+        Finding: finding.finding,
+        Recommendation: finding.recommendation,
+        Priority: finding.priority,
+      },
+      typecast: true,
+    }),
+  });
+}

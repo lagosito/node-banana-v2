@@ -5,10 +5,25 @@ import {
   updateAudit,
   getActivePrompts,
   createRun,
+  getConfig,
 } from "./airtable";
 import { callProvider, getActiveProviders } from "./providers";
 import { analyzeResponse } from "./analyzer";
-import type { AuditConfig, RunResult, ProviderName } from "./types";
+import type { AuditConfig, RunResult, ProviderName, GeoAuditConfig } from "./types";
+
+export interface ScoreBreakdown {
+  mentionRate: number;       // 0-100
+  mentionWeighted: number;   // contribution to score
+  positionAvg: number;       // 0-100
+  positionWeighted: number;
+  citationRate: number;      // 0-100
+  citationWeighted: number;
+  sentimentRate: number;     // 0-100
+  sentimentWeighted: number;
+  sov: number;               // 0-100
+  sovWeighted: number;
+  total: number;
+}
 
 // ─── Domain extraction from URL ───
 function extractDomain(url: string): string {
@@ -23,7 +38,6 @@ function extractDomain(url: string): string {
 // ─── Build aliases from brand name + domain ───
 function buildAliases(brandName: string, domain: string): string[] {
   const aliases = [brandName];
-  // Add domain without TLD as alias
   const base = domain.split(".")[0];
   if (base !== brandName.toLowerCase().replace(/\s+/g, "")) {
     aliases.push(base);
@@ -39,47 +53,91 @@ function resolvePrompt(template: string, config: AuditConfig): string {
     .replace(/{product}/g, config.product);
 }
 
-// ─── Calculate GEO Score ───
+// ─── Extract domain from Google grounding redirect URL ───
+function extractDomainFromRedirect(url: string): string {
+  try {
+    // Google grounding URLs sometimes contain the actual domain in the redirect
+    // or are direct URLs. Extract hostname.
+    const u = new URL(url);
+    return u.hostname;
+  } catch {
+    return url;
+  }
+}
+
+// ─── Calculate GEO Score (returns exact breakdown) ───
 function calculateScore(
   results: RunResult[],
-  config: { mention: number; position: number; citation: number; sentiment: number; sov: number }
-): number {
-  if (results.length === 0) return 0;
+  weights: GeoAuditConfig,
+): ScoreBreakdown {
+  if (results.length === 0) {
+    return {
+      mentionRate: 0, mentionWeighted: 0,
+      positionAvg: 0, positionWeighted: 0,
+      citationRate: 0, citationWeighted: 0,
+      sentimentRate: 0, sentimentWeighted: 0,
+      sov: 0, sovWeighted: 0,
+      total: 0,
+    };
+  }
 
   const totalRuns = results.length;
   const mentionedCount = results.filter((r) => r.brandMentioned).length;
-  const mentionRate = mentionedCount / totalRuns;
 
-  // Average position among mentions (lower = better, 1 = always first)
+  // Mention Rate: % of runs where brand was mentioned
+  const mentionPct = (mentionedCount / totalRuns) * 100;
+  const mentionWeighted = (mentionPct / 100) * weights.score_weight_mention;
+
+  // Position: normalized 0-100 (pos 1 = 100, pos 2 = 70, pos 3 = 50, 4+ = 30)
   const positions = results.filter((r) => r.mentionPosition > 0).map((r) => r.mentionPosition);
-  const avgPosition = positions.length > 0
-    ? Math.max(0, 1 - (positions.reduce((a, b) => a + b, 0) / positions.length - 1) / 5)
+  let positionPct = 0;
+  if (positions.length > 0) {
+    const avgPos = positions.reduce((a, b) => a + b, 0) / positions.length;
+    if (avgPos <= 1) positionPct = 100;
+    else if (avgPos <= 2) positionPct = 70;
+    else if (avgPos <= 3) positionPct = 50;
+    else positionPct = 30;
+  }
+  const positionWeighted = (positionPct / 100) * weights.score_weight_position;
+
+  // Citation Rate: % of runs where domain was cited
+  const citationPct = (results.filter((r) => r.brandDomainCited).length / totalRuns) * 100;
+  const citationWeighted = (citationPct / 100) * weights.score_weight_citation;
+
+  // Sentiment: (positives + 0.5 * neutrals) / totalMentions * 100
+  const positiveCount = results.filter((r) => r.sentiment === "positiv").length;
+  const neutralCount = results.filter((r) => r.sentiment === "neutral").length;
+  const sentimentPct = mentionedCount > 0
+    ? ((positiveCount + 0.5 * neutralCount) / mentionedCount) * 100
     : 0;
+  const sentimentWeighted = (sentimentPct / 100) * weights.score_weight_sentiment;
 
-  // Citation rate
-  const citationRate = results.filter((r) => r.brandDomainCited).length / totalRuns;
-
-  // Sentiment score
-  const sentimentScore =
-    results.filter((r) => r.sentiment === "positiv").length / totalRuns;
-
-  // Share of Voice (brand mentions vs total competitor mentions)
+  // Share of Voice: brand mentions / (brand + competitor mentions)
   const totalCompetitorMentions = results.reduce(
-    (sum, r) => sum + r.competitorsMentioned.length,
-    0
+    (sum, r) => sum + r.competitorsMentioned.length, 0
   );
-  const sov = totalCompetitorMentions > 0
-    ? mentionedCount / (mentionedCount + totalCompetitorMentions)
-    : mentionRate;
+  const sovPct = (mentionedCount + totalCompetitorMentions) > 0
+    ? (mentionedCount / (mentionedCount + totalCompetitorMentions)) * 100
+    : 0;
+  const sovWeighted = (sovPct / 100) * weights.score_weight_sov;
 
-  const score =
-    mentionRate * config.mention +
-    avgPosition * config.position +
-    citationRate * config.citation +
-    sentimentScore * config.sentiment +
-    sov * config.sov;
+  const total = Math.round(
+    (mentionWeighted + positionWeighted + citationWeighted + sentimentWeighted + sovWeighted) * 10
+  ) / 10;
 
-  return Math.round(Math.min(100, Math.max(0, score)));
+  return {
+    mentionRate: Math.round(mentionPct * 10) / 10,
+    mentionWeighted: Math.round(mentionWeighted * 100) / 100,
+    positionAvg: Math.round(positionPct * 10) / 10,
+    positionWeighted: Math.round(positionWeighted * 100) / 100,
+    citationRate: Math.round(citationPct * 10) / 10,
+    citationWeighted: Math.round(citationWeighted * 100) / 100,
+    sentimentRate: Math.round(sentimentPct * 10) / 10,
+    sentimentWeighted: Math.round(sentimentWeighted * 100) / 100,
+    sov: Math.round(sovPct * 10) / 10,
+    sovWeighted: Math.round(sovWeighted * 100) / 100,
+    total,
+  };
 }
 
 // ─── Main run function ───
@@ -89,11 +147,13 @@ export async function runGeoAudit(
 ): Promise<{
   brand: string;
   totalRuns: number;
+  expectedRuns: number;
   mentions: number;
   topCompetitors: string[];
-  score: number;
+  score: ScoreBreakdown;
   costEstimate: number;
   errors: string[];
+  runSummary: Record<string, { expected: number; completed: number; errors: string[] }>;
 }> {
   // 1. Fetch audit
   const audit = await getAudit(auditId);
@@ -109,7 +169,7 @@ export async function runGeoAudit(
     aliases: buildAliases(brandName, extractDomain(brandUrl)),
     region,
     vertical,
-    product: vertical, // use vertical as default product
+    product: vertical,
     language,
   };
 
@@ -128,15 +188,18 @@ export async function runGeoAudit(
     throw new Error("No providers configured");
   }
 
+  const expectedRuns = prompts.length * providers.length;
+
   // 5. Execute all prompt × provider combinations
-  const totalExpected = prompts.length * providers.length;
-  let completed = 0;
   const allResults: RunResult[] = [];
   const errors: string[] = [];
+  const runSummary: Record<string, { expected: number; completed: number; errors: string[] }> = {};
 
-  // Concurrency: 3 per provider
   for (const provider of providers) {
+    const providerErrors: string[] = [];
+    let providerCompleted = 0;
     const concurrency = 3;
+
     for (let i = 0; i < prompts.length; i += concurrency) {
       if (signal?.aborted) break;
 
@@ -145,10 +208,8 @@ export async function runGeoAudit(
         batch.map(async (prompt) => {
           const resolvedPrompt = resolvePrompt(prompt.fields["Prompt Text"], auditConfig);
 
-          // Call provider
           const providerResponse = await callProvider(provider, resolvedPrompt);
 
-          // Analyze with Claude
           const analysis = await analyzeResponse(
             providerResponse.text,
             auditConfig.brandName,
@@ -156,7 +217,6 @@ export async function runGeoAudit(
             auditConfig.aliases,
           );
 
-          // Save run to Airtable
           const result: RunResult = {
             auditRecordId: auditId,
             promptRecordId: prompt.id,
@@ -173,29 +233,45 @@ export async function runGeoAudit(
           };
 
           await createRun(result);
-          completed++;
           return result;
         })
       );
 
-      for (const r of batchResults) {
+      for (let j = 0; j < batchResults.length; j++) {
+        const r = batchResults[j];
+        const promptId = batch[j].id;
         if (r.status === "fulfilled") {
           allResults.push(r.value);
+          providerCompleted++;
         } else {
-          errors.push(r.reason?.message || "Unknown error");
+          const errMsg = `${provider}/${promptId}: ${r.reason?.message || "Unknown error"}`;
+          providerErrors.push(errMsg);
+          errors.push(errMsg);
         }
       }
     }
+
+    runSummary[provider] = {
+      expected: prompts.length,
+      completed: providerCompleted,
+      errors: providerErrors,
+    };
   }
 
-  // 6. Calculate score
-  const weights = {
-    mention: 40,
-    position: 20,
-    citation: 20,
-    sentiment: 10,
-    sov: 10,
-  };
+  // 6. Calculate score with weights from Config table
+  let weights: GeoAuditConfig;
+  try {
+    weights = await getConfig();
+  } catch {
+    // Fallback to default weights if Config table read fails
+    weights = {
+      score_weight_mention: 40,
+      score_weight_position: 20,
+      score_weight_citation: 20,
+      score_weight_sentiment: 10,
+      score_weight_sov: 10,
+    };
+  }
   const score = calculateScore(allResults, weights);
 
   // 7. Dedupe competitors, top 5
@@ -214,20 +290,27 @@ export async function runGeoAudit(
   // 8. Update audit: Status = Done, GEO Score, Competitors
   await updateAudit(auditId, {
     Status: "Done",
-    "GEO Score": score,
+    "GEO Score": Math.round(score.total),
     Competitors: topCompetitors.join("\n"),
   });
 
-  // Rough cost estimate (varies by provider)
-  const costEstimate = allResults.length * 0.03; // ~$0.03 per prompt×provider
+  // Cost estimate per provider
+  const costMap: Record<string, number> = {
+    gemini: 0.01,
+    perplexity: 0.03,
+    openai: 0.05,
+  };
+  const costEstimate = allResults.reduce((sum, r) => sum + (costMap[r.provider] || 0.03), 0);
 
   return {
     brand: brandName,
     totalRuns: allResults.length,
+    expectedRuns,
     mentions: allResults.filter((r) => r.brandMentioned).length,
     topCompetitors,
     score,
-    costEstimate,
+    costEstimate: Math.round(costEstimate * 100) / 100,
     errors,
+    runSummary,
   };
 }

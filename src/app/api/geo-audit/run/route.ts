@@ -5,8 +5,10 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { runGeoAudit } from "@/lib/geo-audit/runner";
+import { generateFindings } from "@/lib/geo-audit/findings";
+import { createFinding, getAudit } from "@/lib/geo-audit/airtable";
 
-export const maxDuration = 240; // Pro plan allows up to 300s
+export const maxDuration = 240;
 
 const GEO_SECRET = process.env.GEO_AUDIT_SECRET || "";
 
@@ -28,7 +30,7 @@ export async function OPTIONS() {
 
 export async function POST(req: NextRequest) {
   try {
-    // Secret validation (skip if no secret configured — dev mode)
+    // Secret validation
     const secret = req.headers.get("x-geo-secret");
     if (GEO_SECRET && secret !== GEO_SECRET) {
       return corsJson({ error: "Unauthorized" }, { status: 401 });
@@ -41,14 +43,44 @@ export async function POST(req: NextRequest) {
       return corsJson({ error: "audit_id required" }, { status: 400 });
     }
 
+    // Phase 1-3: Run the audit
     const result = await runGeoAudit(audit_id);
 
-    // If there are critical errors (all providers failed), return partial result with warning
-    const hasResults = result.totalRuns > 0;
+    // Phase 4: Generate findings if we have data
+    let findings: unknown[] = [];
+    if (result.totalRuns > 0 && result.mentions > 0) {
+      try {
+        // Collect all cited domains from runs
+        // (we need to re-fetch or pass from runner — for now use empty)
+        const audit = await getAudit(audit_id);
+        const findingsData = await generateFindings(
+          result.brand,
+          audit.fields.Vertical,
+          audit.fields.Region || "Deutschland",
+          result.score,
+          result.topCompetitors,
+          [], // citedDomains — collected during runs but not passed back
+          result.totalRuns,
+          result.mentions,
+        );
+
+        // Save findings to Airtable
+        for (const f of findingsData) {
+          await createFinding(audit_id, f);
+        }
+        findings = findingsData;
+      } catch (err) {
+        // Findings generation is non-critical
+        findings = [{ error: err instanceof Error ? err.message : "Findings generation failed" }];
+      }
+    }
+
     return corsJson({
-      success: hasResults,
-      result,
-      ...(result.errors.length > 0 && { warnings: result.errors }),
+      success: result.totalRuns > 0,
+      result: {
+        ...result,
+        findings,
+      },
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
