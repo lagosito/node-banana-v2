@@ -13,7 +13,7 @@ REGELN:
 2. mention_position: Die 1-basierte Position der Marke in der Reihenfolge der Erwähnungen. 0 wenn nicht erwähnt.
 3. sentiment: "positiv" wenn die Marke lobend/polemisch erwähnt wird, "negativ" bei Kritik/Warnung, "neutral" bei sachlicher Erwähnung, "n/a" wenn nicht erwähnt.
 4. brand_domain_cited: TRUE wenn die Website der Marke als Quelle verlinkt oder als URL genannt wird.
-5. cited_domains: Alle domänennamen die als Quellen genannt/verlinkt werden (nur Domains, keine Pfade).
+5. cited_domains: Alle Domains die als Quellen genannt/verlinkt werden (nur Domains, keine Pfade).
 6. competitors_mentioned: Marken/Unternehmen die im selben Kontext wie die Zielmarke genannt werden (Konkurrenzprodukte, Alternativen). Keine allgemeinen Begriffe wie "Weingüter" oder "Restaurants".
 
 TOLERANZ FÜR MARKEN-MATCHING:
@@ -67,8 +67,11 @@ Liefere das JSON-Ergebnis.`;
   const data = await res.json();
   const raw = data.choices?.[0]?.message?.content || "{}";
 
+  // Strip markdown code fences if present
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+
   // Parse with strict validation
-  const parsed = JSON.parse(raw) as AnalysisOutput;
+  const parsed = JSON.parse(cleaned) as AnalysisOutput;
 
   return {
     brand_mentioned: Boolean(parsed.brand_mentioned),
