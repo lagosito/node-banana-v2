@@ -42,7 +42,7 @@ export async function updateAudit(auditId: string, fields: Record<string, unknow
 }
 
 export async function getActivePrompts(vertical: string): Promise<PromptRecord[]> {
-  const filter = encodeURIComponent(`AND({Vertical}='${vertical}',{Active}=TRUE)`);
+  const filter = encodeURIComponent(`AND({Vertical}='${vertical}',{Active}=TRUE())`);
   const data = await atFetch(
     `/${AIRTABLE_BASE_ID}/${T.PROMPTS}?filterByFormula=${filter}&pageSize=100`
   );
