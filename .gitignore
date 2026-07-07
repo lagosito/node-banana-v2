@@ -51,3 +51,4 @@ logs/*.json
 
 .superset/.env.production
 .env.vercel
+.env.production
