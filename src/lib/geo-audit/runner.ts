@@ -9,7 +9,7 @@ import {
   getConfig,
 } from "./airtable";
 import { callProvider, getActiveProviders } from "./providers";
-import { analyzeResponseBatch } from "./analyzer";
+import { analyzeResponse, analyzeResponseBatch } from "./analyzer";
 import type { AuditConfig, RunResult, ProviderName, GeoAuditConfig } from "./types";
 
 export interface ScoreBreakdown {
