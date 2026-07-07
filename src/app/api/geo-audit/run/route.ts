@@ -8,7 +8,7 @@ import { runGeoAudit } from "@/lib/geo-audit/runner";
 import { generateFindings } from "@/lib/geo-audit/findings";
 import { createFinding, getAudit } from "@/lib/geo-audit/airtable";
 
-export const maxDuration = 240;
+export const maxDuration = 300;
 
 const GEO_SECRET = process.env.GEO_AUDIT_SECRET || "";
 
