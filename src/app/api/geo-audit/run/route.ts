@@ -30,7 +30,6 @@ export async function OPTIONS() {
 
 export async function POST(req: NextRequest) {
   try {
-    // Secret validation
     const secret = req.headers.get("x-geo-secret");
     if (GEO_SECRET && secret !== GEO_SECRET) {
       return corsJson({ error: "Unauthorized" }, { status: 401 });
@@ -38,49 +37,41 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const { audit_id } = body;
-
     if (!audit_id) {
       return corsJson({ error: "audit_id required" }, { status: 400 });
     }
 
-    // Phase 1-3: Run the audit
+    // Run audit — returns ResultsJSON (already saved to audit record)
     const result = await runGeoAudit(audit_id);
 
-    // Phase 4: Generate findings if we have data
+    // Generate findings if we have data
     let findings: unknown[] = [];
-    if (result.totalRuns > 0 && result.mentions > 0) {
+    const mentionCount = Math.round(result.totalRuns * result.score.mentionRate / 100);
+    if (result.totalRuns > 0 && mentionCount > 0) {
       try {
-        // Collect all cited domains from runs
-        // (we need to re-fetch or pass from runner — for now use empty)
         const audit = await getAudit(audit_id);
         const findingsData = await generateFindings(
           result.brand,
           audit.fields.Vertical,
           audit.fields.Region || "Deutschland",
           result.score,
-          result.topCompetitors,
-          [], // citedDomains — collected during runs but not passed back
+          result.topCompetitors.map((c) => c.name),
+          result.citedDomains,
           result.totalRuns,
-          result.mentions,
+          mentionCount,
         );
-
-        // Save findings to Airtable
         for (const f of findingsData) {
           await createFinding(audit_id, f);
         }
         findings = findingsData;
       } catch (err) {
-        // Findings generation is non-critical
-        findings = [{ error: err instanceof Error ? err.message : "Findings generation failed" }];
+        findings = [{ error: err instanceof Error ? err.message : "Findings failed" }];
       }
     }
 
     return corsJson({
       success: result.totalRuns > 0,
-      result: {
-        ...result,
-        findings,
-      },
+      result: { ...result, findings },
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
