@@ -319,7 +319,7 @@ export async function runGeoAudit(
         batch.map(async (prompt) => {
           const resolvedPrompt = resolvePrompt(prompt.fields["Prompt Text"], auditConfig);
           const providerResponse = await callProvider(provider, resolvedPrompt);
-          return { promptId: prompt.id, ...providerResponse };
+          return { promptId: prompt.id, responseText: providerResponse.text, citations: providerResponse.citations || [] };
         })
       );
       for (let j = 0; j < batchResults.length; j++) {
