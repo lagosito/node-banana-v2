@@ -74,12 +74,54 @@ async function callPerplexity(prompt: string): Promise<ProviderResponse> {
   return { text, citations };
 }
 
-// ─── OpenAI (structured Responses API — DISABLED until key arrives) ───
+// ─── OpenAI (Responses API with web_search — native key required) ───
 
-async function callOpenAI(_prompt: string): Promise<ProviderResponse> {
-  // TODO: Implement with native OpenAI key + web_search tool
-  // For now, skip silently
-  throw new Error("OpenAI provider disabled — awaiting native API key");
+async function callOpenAI(prompt: string): Promise<ProviderResponse> {
+  const OPENAI_KEY = process.env.OPENAI_API_KEY || "";
+  const res = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${OPENAI_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "gpt-4o",
+      tools: [{ type: "web_search_preview" }],
+      input: prompt,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`OpenAI ${res.status}: ${err}`);
+  }
+
+  const data = await res.json();
+  // Extract text from output items
+  let text = "";
+  for (const item of data.output || []) {
+    if (item.type === "message" && item.content) {
+      for (const part of item.content) {
+        if (part.type === "output_text") text += part.text;
+      }
+    }
+  }
+
+  // Extract citations from annotations
+  const citations: string[] = [];
+  for (const item of data.output || []) {
+    if (item.type === "message" && item.content) {
+      for (const part of item.content) {
+        if (part.type === "output_text" && part.annotations) {
+          for (const ann of part.annotations) {
+            if (ann.url) citations.push(ann.url);
+          }
+        }
+      }
+    }
+  }
+
+  return { text, citations };
 }
 
 // ─── Dispatcher ───
@@ -111,7 +153,7 @@ export async function callProvider(
 }
 
 export function isProviderEnabled(name: ProviderName): boolean {
-  if (name === "openai") return false; // disabled until key
+  if (name === "openai") return !!process.env.OPENAI_API_KEY;
   if (name === "gemini") return !!GEMINI_API_KEY;
   if (name === "perplexity") return !!OPENROUTER_API_KEY;
   return false;
