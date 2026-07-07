@@ -12,6 +12,7 @@ export interface AuditRecord {
     Status: string;
     "GEO Score": number | null;
     Competitors: string;
+    "Results JSON"?: string;
   };
 }
 
