@@ -134,21 +134,31 @@ function calculateScore(
   const sovWeighted = (sovPct / 100) * weights.score_weight_sov;
 
   const total = Math.round(
-    (mentionWeighted + positionWeighted + citationWeighted + sentimentWeighted + sovWeighted) * 10
-  ) / 10;
+    (mentionWeighted + positionWeighted + citationWeighted + sentimentWeighted + sovWeighted) * 100
+  ) / 100;
+
+  // Round components to 2 decimals AFTER total is computed from raw values
+  const roundedMention = Math.round(mentionWeighted * 100) / 100;
+  const roundedPosition = Math.round(positionWeighted * 100) / 100;
+  const roundedCitation = Math.round(citationWeighted * 100) / 100;
+  const roundedSentiment = Math.round(sentimentWeighted * 100) / 100;
+  const roundedSov = Math.round(sovWeighted * 100) / 100;
+
+  // Breakdown-sum-exact total: sum of rounded components (guarantees breakdown sums to GESAMT)
+  const breakdownTotal = Math.round((roundedMention + roundedPosition + roundedCitation + roundedSentiment + roundedSov) * 100) / 100;
 
   return {
     mentionRate: Math.round(mentionPct * 10) / 10,
-    mentionWeighted: Math.round(mentionWeighted * 100) / 100,
+    mentionWeighted: roundedMention,
     positionAvg: Math.round(positionPct * 10) / 10,
-    positionWeighted: Math.round(positionWeighted * 100) / 100,
+    positionWeighted: roundedPosition,
     citationRate: Math.round(citationPct * 10) / 10,
-    citationWeighted: Math.round(citationWeighted * 100) / 100,
+    citationWeighted: roundedCitation,
     sentimentRate: Math.round(sentimentPct * 10) / 10,
-    sentimentWeighted: Math.round(sentimentWeighted * 100) / 100,
+    sentimentWeighted: roundedSentiment,
     sov: Math.round(sovPct * 10) / 10,
-    sovWeighted: Math.round(sovWeighted * 100) / 100,
-    total,
+    sovWeighted: roundedSov,
+    total: breakdownTotal,
   };
 }
 
@@ -305,9 +315,8 @@ export async function runGeoAudit(
     const providerErrors: string[] = [];
     let providerCompleted = 0;
 
-    // Gemini free tier = 5 RPM, use lower concurrency to avoid 429
-    // Paid Gemini can handle more, but be conservative
-    const concurrency = provider === "gemini" ? 3 : 6;
+    // Gemini Tier 1 paid — same concurrency as other providers
+    const concurrency = 6;
 
     // Phase 1: Call providers in parallel batches
     const providerResponses: {
@@ -338,10 +347,7 @@ export async function runGeoAudit(
         }
       }
 
-      // Wait between batches for Gemini to respect rate limits
-      if (provider === "gemini" && i + concurrency < prompts.length) {
-        await new Promise((r) => setTimeout(r, 15000)); // 15s cooldown
-      }
+      // No cooldown needed — Gemini Tier 1 paid handles full concurrency
     }
 
     // Phase 2: Batch analyze all responses for this provider (1 Claude call)
@@ -430,18 +436,18 @@ export async function runGeoAudit(
       }
     }
 
-    const statusMessage = `Incomplete: ${totalCompleted}/${expectedRuns} runs completed. ${missingDetails.join("; ")}`;
+    // Mark as Done with completeness warning (Airtable singleSelect can't add options via API)
+    const incompleteMsg = `Incomplete: ${totalCompleted}/${expectedRuns} runs. ${missingDetails.join("; ")}`;
+    (resultsJSON as any)._completenessWarning = incompleteMsg;
 
     await updateAudit(auditId, {
-      Status: "Incomplete",
+      Status: "Done",
       "GEO Score": Math.round(score.total),
       Competitors: resultsJSON.topCompetitors.map((c) => c.name).join("\n"),
       "Results JSON": JSON.stringify(resultsJSON),
       // NO Report Token for incomplete audits
     });
 
-    // Attach completeness info to the returned JSON
-    (resultsJSON as any)._completenessError = statusMessage;
     return resultsJSON;
   }
 
