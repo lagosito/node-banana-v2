@@ -34,6 +34,14 @@ export async function getAudit(auditId: string): Promise<AuditRecord> {
   return atFetch(`/${AIRTABLE_BASE_ID}/${T.AUDITS}/${auditId}`);
 }
 
+export async function getAuditByToken(token: string): Promise<AuditRecord | null> {
+  const filter = encodeURIComponent(`{Report Token}='${token}'`);
+  const data = await atFetch(
+    `/${AIRTABLE_BASE_ID}/${T.AUDITS}?filterByFormula=${filter}&pageSize=1`
+  );
+  return data.records?.[0] || null;
+}
+
 export async function updateAudit(auditId: string, fields: Record<string, unknown>) {
   return atFetch(`/${AIRTABLE_BASE_ID}/${T.AUDITS}/${auditId}`, {
     method: "PATCH",
@@ -106,4 +114,19 @@ export async function createFinding(
       typecast: true,
     }),
   });
+}
+
+export async function getFindingsForAudit(
+  auditId: string
+): Promise<{ category: string; finding: string; recommendation: string; priority: number }[]> {
+  const filter = encodeURIComponent(`{Audit}='${auditId}'`);
+  const data = await atFetch(
+    `/${AIRTABLE_BASE_ID}/${T.FINDINGS}?filterByFormula=${filter}&pageSize=10`
+  );
+  return (data.records || []).map((r: any) => ({
+    category: r.fields.Category || "",
+    finding: r.fields.Finding || "",
+    recommendation: r.fields.Recommendation || "",
+    priority: r.fields.Priority || 3,
+  }));
 }

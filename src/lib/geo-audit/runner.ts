@@ -11,6 +11,7 @@ import {
 import { callProvider, getActiveProviders } from "./providers";
 import { analyzeResponse, analyzeResponseBatch } from "./analyzer";
 import type { AuditConfig, RunResult, ProviderName, GeoAuditConfig } from "./types";
+import crypto from "crypto";
 
 export interface ScoreBreakdown {
   mentionRate: number;
@@ -406,12 +407,14 @@ export async function runGeoAudit(
     allResults, score, brandName, vertical, region, runSummary, errors, weights,
   );
 
-  // 8. Update audit: Status = Done, GEO Score, Competitors, Results JSON
+  // 8. Update audit: Status = Done, GEO Score, Competitors, Results JSON, Report Token
+  const reportToken = crypto.randomBytes(24).toString("base64url"); // 32 chars
   await updateAudit(auditId, {
     Status: "Done",
     "GEO Score": Math.round(score.total),
     Competitors: resultsJSON.topCompetitors.map((c) => c.name).join("\n"),
     "Results JSON": JSON.stringify(resultsJSON),
+    "Report Token": reportToken,
   });
 
   return resultsJSON;
