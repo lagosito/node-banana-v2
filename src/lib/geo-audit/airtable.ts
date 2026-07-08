@@ -119,14 +119,20 @@ export async function createFinding(
 export async function getFindingsForAudit(
   auditId: string
 ): Promise<{ category: string; finding: string; recommendation: string; priority: number }[]> {
-  const filter = encodeURIComponent(`{Audit}='${auditId}'`);
+  // Airtable filter formulas don't work well with linked record arrays,
+  // so we fetch all and filter in code
   const data = await atFetch(
-    `/${AIRTABLE_BASE_ID}/${T.FINDINGS}?filterByFormula=${filter}&pageSize=10`
+    `/${AIRTABLE_BASE_ID}/${T.FINDINGS}?pageSize=100`
   );
-  return (data.records || []).map((r: any) => ({
-    category: r.fields.Category || "",
-    finding: r.fields.Finding || "",
-    recommendation: r.fields.Recommendation || "",
-    priority: r.fields.Priority || 3,
-  }));
+  return (data.records || [])
+    .filter((r: any) => {
+      const audit = r.fields.Audit;
+      return Array.isArray(audit) && audit.includes(auditId);
+    })
+    .map((r: any) => ({
+      category: r.fields.Category || "",
+      finding: r.fields.Finding || "",
+      recommendation: r.fields.Recommendation || "",
+      priority: r.fields.Priority || 3,
+    }));
 }
