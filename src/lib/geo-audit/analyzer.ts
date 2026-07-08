@@ -128,7 +128,7 @@ Liefere ein JSON mit "results" Objekt, eine Analyse pro ID.`;
       "X-Title": "GEO Audit Batch Analyzer",
     },
     body: JSON.stringify({
-      model: "anthropic/claude-3-haiku",
+      model: "anthropic/claude-haiku-4.5",
       messages: [
         { role: "system", content: BATCH_SYSTEM_PROMPT },
         { role: "user", content: userPrompt },
