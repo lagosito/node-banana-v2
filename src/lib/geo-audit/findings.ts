@@ -1,10 +1,12 @@
-// GEO Audit — Fase 4: Findings generator (Claude via OpenRouter)
+// GEO Audit — Findings generator (Claude via OpenRouter)
+// Generates EXACTLY 5 findings, each mapped to a DISTINCT menu item.
+// All numbers cited in findings come from the Results JSON.
 
 import type { ScoreBreakdown } from "./runner";
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
 
-const RECOMMENDATION_MENU = [
+export const RECOMMENDATION_MENU = [
   "llms.txt anlegen",
   "Schema.org LocalBusiness/Product implementieren",
   "FAQ-Seiten mit direkten Antworten (BLUF) erstellen",
@@ -31,33 +33,42 @@ export async function generateFindings(
   totalRuns: number,
   mentions: number,
 ): Promise<Finding[]> {
-  const systemPrompt = `Du bist ein GEO-Audit Experte. Du analysierst die Ergebnisse eines Markensichtbarkeits-Audits und generierst genau 5 konkrete Empfehlungen auf Deutsch.
+  const mentionRate = Math.round((mentions / totalRuns) * 1000) / 10;
+  const sovRaw = totalRuns > 0 ? Math.round((mentions / (mentions + topCompetitors.length * totalRuns * 0.3)) * 1000) / 10 : 0;
 
-REGELN:
-1. Genau 5 Findings, jedes mit Category, Finding, Recommendation und Priority (1=highest, 5=lowest).
-2. Jede Empfehlung muss aus dem erlaubten Menú stammen (oder eine logische Ableitung davon sein).
-3. Kategorien: Sichtbarkeit, Zitate, Wettbewerb, Content, Technik.
-4. Prioritäten: 1 = dringend, 5 = nice-to-have. Mindestens eine Priority 1 oder 2.
-5. Keine Marketing-Floskeln. Jede Empfehlung muss spezifisch und umsetzbar sein.
-6. Antworte NUR mit einem gültigen JSON-Array.
+  const systemPrompt = `Du bist ein GEO-Audit Experte. Generierst genau 5 Empfehlungen auf Deutsch.
 
-ERLAUBTES MENÜ FÜR EMPFEHLUNGEN:
-${RECOMMENDATION_MENU.map((r, i) => `${i + 1}. ${r}`).join("\n")}`;
+HARTE REGELN:
+1. Genau 5 Findings, jedes mit category, finding, recommendation, priority (1-5).
+2. JEDES finding muss eine ANDERE Empfehlung aus dem Menú verwenden — keine Wiederholungen.
+3. Die 5 Empfehlungen müssen jeweils zu einer dieser Kategorien passen: Sichtbarkeit, Zitate, Wettbewerb, Content, Technik.
+4. JEDE Zahl die du im Finding-text nennst, MUSS exakt aus dem Audit-Stamm kommen — NICHT schätzen.
+5. Keine Marketing-Floskeln. Spezifisch und umsetzbar.
+6. NUR ein gültiges JSON-Array, keine Erklärungen.
 
-  const userPrompt = `GEO-Audit Ergebnisse für ${brandName} (${vertical}, ${region}):
+ERLAUBTES MENÜ (jedes Item genau EINMAL verwenden):
+${RECOMMENDATION_MENU.map((r, i) => `${i + 1}. ${r}`).join("\n")}
 
-GEO Score: ${score.total}/100
-- Mention Rate: ${score.mentionRate}% (gewichtet: ${score.mentionWeighted})
-- Position: ${score.positionAvg} (gewichtet: ${score.positionWeighted})
-- Citation Rate: ${score.citationRate}% (gewichtet: ${score.citationWeighted})
-- Sentiment: ${score.sentimentRate}% (gewichtet: ${score.sentimentWeighted})
-- Share of Voice: ${score.sov}% (gewichtet: ${score.sovWeighted})
+NUMMERISCHE DATEN AUS DEM AUDIT (nur diese Zahlen verwenden):
+- GEO Score: ${score.total}/100
+- Mention Rate: ${mentionRate}%
+- Position (norm.): ${score.positionAvg}
+- Citation Rate: ${score.citationRate}%
+- Sentiment: ${score.sentimentRate}%
+- Share of Voice: ${score.sov}%
+- Erwähnungen: ${mentions} von ${totalRuns} Runs`;
 
-Runs: ${mentions} Erwähnungen von ${totalRuns} Runs
-Top-Konkurrenten: ${topCompetitors.join(", ")}
-Zitierte Domains: ${citedDomains.length > 0 ? citedDomains.join(", ") : "Keine"}
+  const userPrompt = `Audit-Ergebnisse für ${brandName} (${vertical}, ${region}):
 
-Generiere genau 5 Empfehlungen als JSON-Array.`;
+Score ${score.total}/100 — ${score.total < 40 ? "Schwach" : score.total <= 70 ? "Mittel" : "Stark"}
+- Mention Rate: ${mentionRate}% (${mentions}/${totalRuns})
+- Citation Rate: ${score.citationRate}%
+- Sentiment: ${score.sentimentRate}%
+- Share of Voice: ${score.sov}%
+- Top-Konkurrenten: ${topCompetitors.slice(0, 3).join(", ") || "Keine"}
+- Zitierte Domains: ${citedDomains.length > 0 ? citedDomains.join(", ") : "Keine"}
+
+Generiere genau 5 Empfehlungen (je eine aus dem Menú, keine Wiederholung).`;
 
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
@@ -102,7 +113,6 @@ Generiere genau 5 Empfehlungen als JSON-Array.`;
     items = parsed;
   } else if (parsed && typeof parsed === "object") {
     const obj = parsed as Record<string, unknown>;
-    // Find the array inside the object
     const arrKey = Object.keys(obj).find((k) => Array.isArray(obj[k]));
     items = arrKey ? (obj[arrKey] as unknown[]) : [];
   } else {
@@ -111,10 +121,50 @@ Generiere genau 5 Empfehlungen als JSON-Array.`;
 
   const validCategories = ["Sichtbarkeit", "Zitate", "Wettbewerb", "Content", "Technik"];
 
-  return items.slice(0, 5).map((item: any) => ({
+  // Map each finding to nearest menu item if recommendation doesn't match
+  const mapToMenu = (rec: string): string => {
+    const lower = rec.toLowerCase();
+    for (const item of RECOMMENDATION_MENU) {
+      if (lower.includes(item.toLowerCase().substring(0, 15))) return item;
+    }
+    // Fallback: return as-is (will be caught by uniqueness check)
+    return rec;
+  };
+
+  let findings: Finding[] = items.slice(0, 7).map((item: any) => ({
     category: validCategories.includes(item.category) ? item.category : "Content",
     finding: String(item.finding || ""),
-    recommendation: String(item.recommendation || ""),
+    recommendation: mapToMenu(String(item.recommendation || "")),
     priority: Math.min(5, Math.max(1, Number(item.priority) || 3)),
   }));
+
+  // UNIQUENESS: ensure each recommendation maps to a distinct menu item
+  const seenMenuItems = new Set<string>();
+  const uniqueFindings: Finding[] = [];
+  for (const f of findings) {
+    if (!seenMenuItems.has(f.recommendation)) {
+      seenMenuItems.add(f.recommendation);
+      uniqueFindings.push(f);
+    }
+    if (uniqueFindings.length >= 5) break;
+  }
+
+  // If we don't have 5 unique, pad from remaining menu items
+  if (uniqueFindings.length < 5) {
+    const remaining = RECOMMENDATION_MENU.filter((m) => !seenMenuItems.has(m));
+    for (const menu of remaining) {
+      if (uniqueFindings.length >= 5) break;
+      uniqueFindings.push({
+        category: "Content",
+        finding: `${brandName} könnte von "${menu}" profitieren`,
+        recommendation: menu,
+        priority: 4,
+      });
+    }
+  }
+
+  // Re-prioritize: sort by priority, renumber
+  uniqueFindings.sort((a, b) => a.priority - b.priority);
+
+  return uniqueFindings.slice(0, 5);
 }

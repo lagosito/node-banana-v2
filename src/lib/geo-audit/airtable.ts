@@ -118,21 +118,36 @@ export async function createFinding(
 
 export async function getFindingsForAudit(
   auditId: string
-): Promise<{ category: string; finding: string; recommendation: string; priority: number }[]> {
-  // Airtable filter formulas don't work well with linked record arrays,
-  // so we fetch all and filter in code
-  const data = await atFetch(
-    `/${AIRTABLE_BASE_ID}/${T.FINDINGS}?pageSize=100`
-  );
+): Promise<{ id: string; category: string; finding: string; recommendation: string; priority: number }[]> {
+  const data = await atFetch(`/${AIRTABLE_BASE_ID}/${T.FINDINGS}?pageSize=100`);
   return (data.records || [])
     .filter((r: any) => {
       const audit = r.fields.Audit;
       return Array.isArray(audit) && audit.includes(auditId);
     })
     .map((r: any) => ({
+      id: r.id,
       category: r.fields.Category || "",
       finding: r.fields.Finding || "",
       recommendation: r.fields.Recommendation || "",
       priority: r.fields.Priority || 3,
     }));
+}
+
+export async function deleteFindingsForAudit(auditId: string): Promise<number> {
+  const existing = await getFindingsForAudit(auditId);
+  if (existing.length === 0) return 0;
+
+  // Airtable batch delete max 10 at a time
+  let deleted = 0;
+  for (let i = 0; i < existing.length; i += 10) {
+    const batch = existing.slice(i, i + 10);
+    const ids = batch.map((f) => f.id);
+    await atFetch(`/${AIRTABLE_BASE_ID}/${T.FINDINGS}`, {
+      method: "DELETE",
+      body: JSON.stringify({ records: ids }),
+    });
+    deleted += ids.length;
+  }
+  return deleted;
 }

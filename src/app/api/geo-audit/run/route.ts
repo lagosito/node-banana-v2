@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runGeoAudit } from "@/lib/geo-audit/runner";
 import { generateFindings } from "@/lib/geo-audit/findings";
-import { createFinding, getAudit } from "@/lib/geo-audit/airtable";
+import { createFinding, getAudit, deleteFindingsForAudit } from "@/lib/geo-audit/airtable";
 
 export const maxDuration = 300;
 
@@ -43,6 +43,19 @@ export async function POST(req: NextRequest) {
 
     // Run audit — returns ResultsJSON (already saved to audit record)
     const result = await runGeoAudit(audit_id);
+
+    // Check completeness — don't generate findings for incomplete audits
+    if ((result as any)._completenessError) {
+      return corsJson({
+        success: false,
+        status: "Incomplete",
+        error: (result as any)._completenessError,
+        result,
+      });
+    }
+
+    // DELETE old findings for this audit before regenerating
+    await deleteFindingsForAudit(audit_id);
 
     // Generate findings if we have data
     let findings: unknown[] = [];

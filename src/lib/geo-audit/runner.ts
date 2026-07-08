@@ -304,7 +304,10 @@ export async function runGeoAudit(
   for (const provider of providers) {
     const providerErrors: string[] = [];
     let providerCompleted = 0;
-    const concurrency = 6; // Max parallel provider calls
+
+    // Gemini free tier = 5 RPM, use lower concurrency to avoid 429
+    // Paid Gemini can handle more, but be conservative
+    const concurrency = provider === "gemini" ? 3 : 6;
 
     // Phase 1: Call providers in parallel batches
     const providerResponses: {
@@ -333,6 +336,11 @@ export async function runGeoAudit(
           providerErrors.push(errMsg);
           errors.push(errMsg);
         }
+      }
+
+      // Wait between batches for Gemini to respect rate limits
+      if (provider === "gemini" && i + concurrency < prompts.length) {
+        await new Promise((r) => setTimeout(r, 15000)); // 15s cooldown
       }
     }
 
@@ -407,7 +415,37 @@ export async function runGeoAudit(
     allResults, score, brandName, vertical, region, runSummary, errors, weights,
   );
 
-  // 8. Update audit: Status = Done, GEO Score, Competitors, Results JSON, Report Token
+  // 8. COMPLETENESS CHECK: mark Incomplete if runs are missing without errors
+  const totalCompleted = allResults.length;
+  const totalErrors = errors.length;
+  const isComplete = totalCompleted === expectedRuns;
+
+  if (!isComplete) {
+    // Build detailed missing-runs report
+    const missingDetails: string[] = [];
+    for (const [provider, summary] of Object.entries(runSummary)) {
+      const missing = summary.expected - summary.completed;
+      if (missing > 0) {
+        missingDetails.push(`${provider}: ${summary.completed}/${summary.expected} completed (${missing} missing, ${summary.errors.length} errors)`);
+      }
+    }
+
+    const statusMessage = `Incomplete: ${totalCompleted}/${expectedRuns} runs completed. ${missingDetails.join("; ")}`;
+
+    await updateAudit(auditId, {
+      Status: "Incomplete",
+      "GEO Score": Math.round(score.total),
+      Competitors: resultsJSON.topCompetitors.map((c) => c.name).join("\n"),
+      "Results JSON": JSON.stringify(resultsJSON),
+      // NO Report Token for incomplete audits
+    });
+
+    // Attach completeness info to the returned JSON
+    (resultsJSON as any)._completenessError = statusMessage;
+    return resultsJSON;
+  }
+
+  // 9. Audit is complete — generate report token and save
   const reportToken = crypto.randomBytes(24).toString("base64url"); // 32 chars
   await updateAudit(auditId, {
     Status: "Done",
