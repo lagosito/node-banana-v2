@@ -7,6 +7,28 @@ import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { getAudit } from "@/lib/geo-audit/airtable";
 import type { ResultsJSON } from "@/lib/geo-audit/runner";
 
+// ─── Normalize Results JSON (backward compatibility) ───
+function normalizeResultsJSON(raw: any): ResultsJSON {
+  if (raw.breakdown && raw.providerTable && raw.citedDomains) return raw as ResultsJSON;
+  const s = raw.score || { total: 0, mentionRate: 0, mentionWeighted: 0, positionAvg: 0, positionWeighted: 0, citationRate: 0, citationWeighted: 0, sentimentRate: 0, sentimentWeighted: 0, sov: 0, sovWeighted: 0 };
+  return {
+    brand: raw.brand||'', vertical: raw.vertical||'', region: raw.region||'',
+    date: raw.date||new Date().toISOString().split('T')[0],
+    totalRuns: raw.totalRuns||0, expectedRuns: raw.expectedRuns||raw.totalRuns||0, score: s,
+    breakdown: raw.breakdown||[
+      {component:'Mention Rate',raw:s.mentionRate+'%',weight:'40',points:(s.mentionWeighted||0).toFixed(2)},
+      {component:'Position',raw:''+s.positionAvg,weight:'20',points:(s.positionWeighted||0).toFixed(2)},
+      {component:'Citation Rate',raw:s.citationRate+'%',weight:'20',points:(s.citationWeighted||0).toFixed(2)},
+      {component:'Sentiment',raw:s.sentimentRate+'%',weight:'10',points:(s.sentimentWeighted||0).toFixed(2)},
+      {component:'Share of Voice',raw:s.sov+'%',weight:'10',points:(s.sovWeighted||0).toFixed(2)},
+      {component:'GESAMT',raw:'',weight:'100',points:(s.total||0).toFixed(2)},
+    ],
+    providerTable: raw.providerTable||Object.entries(raw.runSummary||{}).map(([n,i]:[string,any])=>({name:n,runs:i.completed||0,mentions:0,avgPosition:0,cited:0})),
+    topCompetitors: Array.isArray(raw.topCompetitors)?raw.topCompetitors.map((c:any)=>typeof c==='string'?{name:c,count:1}:c):[],
+    citedDomains: raw.citedDomains||[],
+    runSummary: raw.runSummary||{},errors:raw.errors||[],costEstimate:raw.costEstimate||0,
+  };
+}
 const GEO_SECRET = process.env.GEO_AUDIT_SECRET || "";
 
 // ─── Helpers ───
@@ -21,6 +43,28 @@ function scoreLabel(score: number): string {
   if (score < 40) return "Schwach";
   if (score <= 70) return "Mittel";
   return "Stark";
+}
+/** Sanitize text for pdf-lib Helvetica (non-ASCII unsupported) */
+function sanitize(text: string): string {
+  return text.replace(/[^\x00-\x7F]/g, (ch) => {
+    const code = ch.charCodeAt(0);
+    if (code === 0xe4) return 'ae';
+    if (code === 0xf6) return 'oe';
+    if (code === 0xfc) return 'ue';
+    if (code === 0xc4) return 'Ae';
+    if (code === 0xd6) return 'Oe';
+    if (code === 0xdc) return 'Ue';
+    if (code === 0xdf) return 'ss';
+    if (code === 0x2248) return '~';
+    if (code === 0x2265) return '>=';
+    if (code === 0x2264) return '<=';
+    if (code === 0x00d7) return 'x';
+    if (code === 0x2013 || code === 0x2014) return '-';
+    if (code === 0x201c || code === 0x201d) return '"';
+    if (code === 0x2018 || code === 0x2019) return "'";
+    if (code === 0x2022 || code === 0x2023) return '-';
+    return '';
+  });
 }
 
 // ─── QA Gate ───
@@ -91,7 +135,7 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    const data: ResultsJSON = JSON.parse(resultsJSONRaw as string);
+    const data: ResultsJSON = normalizeResultsJSON(JSON.parse(resultsJSONRaw as string));
 
     // QA Gate
     const qaErrors = validateResultsJSON(data);
