@@ -76,7 +76,8 @@ export async function GET(request: NextRequest) {
       boards = boards.filter(
         (b) =>
           b.boardName.toLowerCase().includes(q) ||
-          b.clientName.toLowerCase().includes(q)
+          b.clientName.toLowerCase().includes(q) ||
+          b.id.toLowerCase().startsWith(q)
       );
     }
 
