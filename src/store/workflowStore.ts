@@ -2362,7 +2362,7 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
               console.error(`[saveToBoard] ❌ Presign failed for ${key}:`, await presignRes.text());
               continue;
             }
-            const { presignedUrl } = await presignRes.json();
+            const { presignedUrl, publicUrl } = await presignRes.json();
 
             // Step 2: Convert base64 to Blob and upload directly to Vercel Blob
             const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
@@ -2380,10 +2380,9 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
             });
 
             if (putRes.ok) {
-              // The download URL is the presigned URL without query params
-              const blobUrl = presignedUrl.split("?")[0];
-              videoUrls[key] = blobUrl;
-              console.log(`[saveToBoard] ✅ Uploaded video ${key} → ${blobUrl}`);
+              // Use the public CDN URL from the presign response
+              videoUrls[key] = publicUrl || presignedUrl.split("?")[0];
+              console.log(`[saveToBoard] ✅ Uploaded video ${key} → ${publicUrl}`);
             } else {
               console.error(`[saveToBoard] ❌ PUT failed for ${key}:`, putRes.status, await putRes.text());
             }

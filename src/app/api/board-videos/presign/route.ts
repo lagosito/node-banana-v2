@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * POST /api/board-videos/presign
- * Returns a presigned upload URL for direct client-to-Blob upload.
+ * Returns a presigned upload URL + store ID for direct client-to-Blob upload.
  * Body: { boardId: string, videoKey: string }
  */
 export async function POST(request: NextRequest) {
@@ -38,9 +38,18 @@ export async function POST(request: NextRequest) {
       access: "public",
     });
 
+    // Extract store ID from BLOB_READ_WRITE_TOKEN (format: vercel_blob_rw_{storeId}_{secret})
+    const blobToken = process.env.BLOB_READ_WRITE_TOKEN || "";
+    const storeId = blobToken.split("_")[2] || "";
+
+    // Construct the public CDN URL
+    const publicUrl = storeId
+      ? `https://${storeId}.blob.vercel-storage.com/${blobPath}`
+      : undefined;
+
     console.log(`[board-videos/presign] Generated presigned URL for ${blobPath}`);
 
-    return NextResponse.json({ presignedUrl, pathname: blobPath });
+    return NextResponse.json({ presignedUrl, publicUrl, pathname: blobPath });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Failed to generate presigned URL";
     console.error("[board-videos/presign] Error:", msg);
