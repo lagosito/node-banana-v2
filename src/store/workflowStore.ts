@@ -2266,6 +2266,11 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
 
     get().clearSnapshot();
     get().recomputeDimmedNodes();
+
+    // Update URL to show board ID
+    if (typeof window !== "undefined" && window.location.pathname !== `/board/${board.id}`) {
+      window.history.replaceState(null, "", `/board/${board.id}`);
+    }
   },
 
   saveToBoard: async () => {
@@ -2335,24 +2340,28 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
         return { ...rest, data };
       });
 
-      // Upload videos to Vercel Blob (parallel with images, don't block workflow save)
+      // Upload videos to Vercel Blob (one at a time to avoid body size limits)
       let videoUrls: Record<string, string> = {};
       if (Object.keys(extractedVideos).length > 0) {
-        try {
-          const vidRes = await fetch("/api/board-videos", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ boardId, videos: extractedVideos }),
-          });
-          if (vidRes.ok) {
-            const vidData = await vidRes.json();
-            videoUrls = vidData.urls || {};
-            console.log(`[saveToBoard] Uploaded ${Object.keys(videoUrls).length} videos to Blob`);
-          } else {
-            console.error("[saveToBoard] Failed to upload videos:", await vidRes.text());
+        for (const [key, dataUrl] of Object.entries(extractedVideos)) {
+          try {
+            const vidRes = await fetch("/api/board-videos", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ boardId, videoKey: key, dataUrl }),
+            });
+            if (vidRes.ok) {
+              const vidData = await vidRes.json();
+              if (vidData.url) {
+                videoUrls[key] = vidData.url;
+                console.log(`[saveToBoard] ✅ Uploaded video ${key}`);
+              }
+            } else {
+              console.error(`[saveToBoard] ❌ Failed to upload ${key}:`, await vidRes.text());
+            }
+          } catch (e) {
+            console.error(`[saveToBoard] Video upload error for ${key}:`, e);
           }
-        } catch (e) {
-          console.error("[saveToBoard] Video upload error:", e);
         }
       }
 
@@ -2474,6 +2483,13 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
   // Auto-save actions
   setBoardAssociation: (boardId: string, clientName: string) => {
     set({ boardId, boardClientName: clientName });
+    // Update URL to show board ID (without page reload)
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (url.pathname !== `/board/${boardId}`) {
+        window.history.replaceState(null, "", `/board/${boardId}`);
+      }
+    }
   },
 
   setWorkflowMetadata: (id: string, name: string, path: string, generationsPath?: string | null) => {

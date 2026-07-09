@@ -45,7 +45,7 @@ export default function SharedBoardPage() {
           hasWorkflowData: true,
         });
 
-        // Redirect to main canvas with the board loaded
+        // Redirect to editor — loadFromBoard already set boardId in store
         router.replace("/");
       } catch (e) {
         setError(`Error loading board: ${e instanceof Error ? e.message : "Unknown error"}`);
