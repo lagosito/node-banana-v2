@@ -2347,24 +2347,45 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
         return { ...rest, data };
       });
 
-      // Upload videos to Vercel Blob (one at a time to avoid body size limits)
+      // Upload videos to Vercel Blob via presigned URLs (client uploads directly, bypasses 4.5MB route handler limit)
       let videoUrls: Record<string, string> = {};
       if (Object.keys(extractedVideos).length > 0) {
         for (const [key, dataUrl] of Object.entries(extractedVideos)) {
           try {
-            const vidRes = await fetch("/api/board-videos", {
+            // Step 1: Get presigned upload URL (tiny request, no body limit)
+            const presignRes = await fetch("/api/board-videos/presign", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ boardId, videoKey: key, dataUrl }),
+              body: JSON.stringify({ boardId, videoKey: key }),
             });
-            if (vidRes.ok) {
-              const vidData = await vidRes.json();
-              if (vidData.url) {
-                videoUrls[key] = vidData.url;
-                console.log(`[saveToBoard] ✅ Uploaded video ${key}`);
-              }
+            if (!presignRes.ok) {
+              console.error(`[saveToBoard] ❌ Presign failed for ${key}:`, await presignRes.text());
+              continue;
+            }
+            const { presignedUrl } = await presignRes.json();
+
+            // Step 2: Convert base64 to Blob and upload directly to Vercel Blob
+            const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+            if (!match) continue;
+            const [, mimeType, base64Data] = match;
+            const binaryStr = atob(base64Data);
+            const bytes = new Uint8Array(binaryStr.length);
+            for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+            const blob = new Blob([bytes], { type: mimeType });
+
+            const putRes = await fetch(presignedUrl, {
+              method: "PUT",
+              body: blob,
+              headers: { "Content-Type": mimeType },
+            });
+
+            if (putRes.ok) {
+              // The download URL is the presigned URL without query params
+              const blobUrl = presignedUrl.split("?")[0];
+              videoUrls[key] = blobUrl;
+              console.log(`[saveToBoard] ✅ Uploaded video ${key} → ${blobUrl}`);
             } else {
-              console.error(`[saveToBoard] ❌ Failed to upload ${key}:`, await vidRes.text());
+              console.error(`[saveToBoard] ❌ PUT failed for ${key}:`, putRes.status, await putRes.text());
             }
           } catch (e) {
             console.error(`[saveToBoard] Video upload error for ${key}:`, e);
