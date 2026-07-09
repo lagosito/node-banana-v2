@@ -2098,7 +2098,7 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
               const imgData = await imagesRes.json();
               if (imgData.images && typeof imgData.images === "object") {
                 const currentNodes = get().nodes;
-                const IMAGE_FIELDS = ["image", "outputImage", "audioFile", "outputAudio", "video"];
+                const IMAGE_FIELDS = ["image", "outputImage", "audioFile", "outputAudio"];
 
                 const restoredNodes = currentNodes.map((node) => {
                   const data = { ...node.data } as Record<string, unknown>;
@@ -2279,9 +2279,11 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
     set({ isSaving: true });
 
     try {
-      // Extract images from nodes before saving
+      // Extract media from nodes before saving
       const extractedImages: Record<string, string> = {};
-      const IMAGE_FIELDS = ["image", "outputImage", "audioFile", "outputAudio", "video"];
+      const extractedVideos: Record<string, string> = {};
+      const IMAGE_FIELDS = ["image", "outputImage", "audioFile", "outputAudio"];
+      const VIDEO_FIELDS = ["video"];
       const IMAGE_ARRAY_FIELDS = ["inputImages"];
 
       const strippedNodes = nodes.map((node) => {
@@ -2293,6 +2295,15 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
           const val = data[field];
           if (typeof val === "string" && val.startsWith("data:")) {
             extractedImages[`${node.id}:${field}`] = val;
+            data[field] = null;
+          }
+        }
+
+        // Extract video fields → upload to Vercel Blob (too large for Supabase)
+        for (const field of VIDEO_FIELDS) {
+          const val = data[field];
+          if (typeof val === "string" && val.startsWith("data:")) {
+            extractedVideos[`${node.id}:${field}`] = val;
             data[field] = null;
           }
         }
@@ -2324,6 +2335,38 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
         return { ...rest, data };
       });
 
+      // Upload videos to Vercel Blob (parallel with images, don't block workflow save)
+      let videoUrls: Record<string, string> = {};
+      if (Object.keys(extractedVideos).length > 0) {
+        try {
+          const vidRes = await fetch("/api/board-videos", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ boardId, videos: extractedVideos }),
+          });
+          if (vidRes.ok) {
+            const vidData = await vidRes.json();
+            videoUrls = vidData.urls || {};
+            console.log(`[saveToBoard] Uploaded ${Object.keys(videoUrls).length} videos to Blob`);
+          } else {
+            console.error("[saveToBoard] Failed to upload videos:", await vidRes.text());
+          }
+        } catch (e) {
+          console.error("[saveToBoard] Video upload error:", e);
+        }
+      }
+
+      // Replace video base64 with Blob URLs in stripped nodes
+      for (const node of strippedNodes) {
+        const data = node.data as Record<string, unknown>;
+        for (const [key, url] of Object.entries(videoUrls)) {
+          const [nodeId, field] = key.split(":");
+          if (node.id === nodeId && data[field] === null) {
+            data[field] = url; // Store the Blob URL instead of base64
+          }
+        }
+      }
+
       const workflow = {
         version: 1,
         name: workflowName || "untitled",
@@ -2333,7 +2376,7 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
         groups: groups && Object.keys(groups).length > 0 ? groups : undefined,
       };
 
-      // Save workflow structure to Airtable
+      // Save workflow structure to Supabase
       const res = await fetch("/api/boards", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
