@@ -40,7 +40,8 @@ export async function POST(request: NextRequest) {
 
     // Extract store ID from BLOB_READ_WRITE_TOKEN (format: vercel_blob_rw_{storeId}_{secret})
     const blobToken = process.env.BLOB_READ_WRITE_TOKEN || "";
-    const storeId = blobToken.split("_")[2] || "";
+    const tokenParts = blobToken.split("_");
+    const storeId = tokenParts[3] || "";
 
     // Construct the public CDN URL
     const publicUrl = storeId
