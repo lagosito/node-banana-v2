@@ -80,6 +80,22 @@ export default function App() {
     };
   }, []);
 
+  // Keep URL in sync with board ID
+  const boardId = useWorkflowStore((s) => s.boardId);
+  const boardClientName = useWorkflowStore((s) => s.boardClientName);
+
+  useEffect(() => {
+    if (!boardId || typeof window === "undefined") return;
+    const clientName = boardClientName || "";
+    const slug = clientName
+      ? `${clientName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "")}-${boardId.slice(0, 8)}`
+      : boardId.slice(0, 8);
+    const newPath = `/board/${slug}`;
+    if (window.location.pathname !== newPath) {
+      window.history.replaceState(null, "", newPath);
+    }
+  }, [boardId, boardClientName]);
+
   return (
     <ReactFlowProvider>
       <div className="h-screen flex flex-col">

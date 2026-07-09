@@ -17,32 +17,24 @@ export default function SharedBoardPage() {
     const loadBoard = async () => {
       try {
         // The slug format is: {clientName}-{first8CharsOfUUID} or just {first8CharsOfUUID}
-        // Try to find the board by searching with the ID portion
-        // First, try the full slug as a board ID (legacy format)
-        let boardId = slug;
-
-        // If slug contains hyphens, it's likely clientName-xxxx format
-        // Extract the last segment as potential UUID prefix
         const parts = slug.split("-");
         const lastPart = parts[parts.length - 1];
 
-        // Try searching by ID first (full UUID or legacy)
+        // Try direct ID lookup first (full UUID or legacy)
         let res = await fetch(`/api/boards?id=${encodeURIComponent(slug)}`);
         let data = await res.json();
 
-        // If not found and slug has a prefix, try searching by the UUID portion
+        // If not found and slug has a UUID prefix, search by prefix
         if (!data.board && lastPart.length >= 6) {
-          // Search all boards and match by UUID prefix
           const searchRes = await fetch(`/api/boards?search=${encodeURIComponent(lastPart)}`);
           const searchData = await searchRes.json();
           if (searchData.boards && searchData.boards.length > 0) {
-            // Find the board whose ID starts with the last part
             const match = searchData.boards.find((b: { id: string }) =>
               b.id.startsWith(lastPart)
             );
             if (match) {
-              boardId = match.id;
-              res = await fetch(`/api/boards?id=${boardId}`);
+              // Fetch the full board data with workflow
+              res = await fetch(`/api/boards?id=${match.id}`);
               data = await res.json();
             }
           }
@@ -60,7 +52,7 @@ export default function SharedBoardPage() {
           return;
         }
 
-        // Load into the workflow store
+        // Load into the workflow store (this also sets the URL via replaceState)
         const { loadFromBoard } = useWorkflowStore.getState();
         await loadFromBoard({
           id: data.board.id,
@@ -70,8 +62,11 @@ export default function SharedBoardPage() {
           hasWorkflowData: true,
         });
 
-        // Redirect to editor — loadFromBoard updates URL via replaceState
-        router.replace("/");
+        // Navigate to editor — the store already set the URL to /board/{slug}
+        // Use setTimeout to let replaceState apply first
+        setTimeout(() => {
+          router.replace("/");
+        }, 50);
       } catch (e) {
         setError(`Error loading board: ${e instanceof Error ? e.message : "Unknown error"}`);
         setLoading(false);
@@ -88,10 +83,7 @@ export default function SharedBoardPage() {
           <img src="/icon.png" alt="El Kiosk" className="w-16 h-16 mx-auto mb-4 rounded-lg" />
           <h1 className="text-xl font-semibold mb-2">El Kiosk</h1>
           <p className="text-[var(--c-text-secondary, #999)] mb-4">{error}</p>
-          <button
-            onClick={() => router.push("/")}
-            className="px-4 py-2 rounded-lg bg-[var(--c-surface, #2a2a2a)] hover:bg-[var(--c-surface-hover, #333)] transition-colors"
-          >Go to Editor</button>
+          <button onClick={() => router.push("/")} className="px-4 py-2 rounded-lg bg-[var(--c-surface, #2a2a2a)] hover:bg-[var(--c-surface-hover, #333)] transition-colors">Go to Editor</button>
         </div>
       </div>
     );
