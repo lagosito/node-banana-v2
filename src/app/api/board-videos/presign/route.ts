@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
 
     // Construct the public CDN URL
     const publicUrl = storeId
-      ? `https://${storeId}.blob.vercel-storage.com/${blobPath}`
+      ? `https://${storeId}.public.blob.vercel-storage.com/${blobPath}`
       : undefined;
 
     console.log(`[board-videos/presign] Generated presigned URL for ${blobPath}`);
