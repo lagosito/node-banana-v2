@@ -2267,9 +2267,16 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
     get().clearSnapshot();
     get().recomputeDimmedNodes();
 
-    // Update URL to show board ID
-    if (typeof window !== "undefined" && window.location.pathname !== `/board/${board.id}`) {
-      window.history.replaceState(null, "", `/board/${board.id}`);
+    // Update URL to show client name + board ID
+    if (typeof window !== "undefined") {
+      const clientName = board.clientName || "";
+      const slug = clientName
+        ? `${clientName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "")}-${board.id.slice(0, 8)}`
+        : board.id.slice(0, 8);
+      const newPath = `/board/${slug}`;
+      if (window.location.pathname !== newPath) {
+        window.history.replaceState(null, "", newPath);
+      }
     }
   },
 
@@ -2483,11 +2490,14 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
   // Auto-save actions
   setBoardAssociation: (boardId: string, clientName: string) => {
     set({ boardId, boardClientName: clientName });
-    // Update URL to show board ID (without page reload)
+    // Update URL to show client name + board ID
     if (typeof window !== "undefined") {
-      const url = new URL(window.location.href);
-      if (url.pathname !== `/board/${boardId}`) {
-        window.history.replaceState(null, "", `/board/${boardId}`);
+      const slug = clientName
+        ? `${clientName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "")}-${boardId.slice(0, 8)}`
+        : boardId.slice(0, 8);
+      const newPath = `/board/${slug}`;
+      if (window.location.pathname !== newPath) {
+        window.history.replaceState(null, "", newPath);
       }
     }
   },

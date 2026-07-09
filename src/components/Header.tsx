@@ -285,7 +285,7 @@ export function Header() {
                       </button>
                       <button
                         onClick={() => {
-                          const url = `${window.location.origin}/board/${boardId}`;
+                          const url = window.location.href;
                           navigator.clipboard.writeText(url).then(() => {
                             setShareCopied(true);
                             setTimeout(() => setShareCopied(false), 2000);
