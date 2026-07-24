@@ -75,10 +75,10 @@ ALTER TABLE geo_check_reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE geo_check_leads ENABLE ROW LEVEL SECURITY;
 ALTER TABLE geo_check_rate_limits ENABLE ROW LEVEL SECURITY;
 
--- Reports: anon can read safe fields only (gated logic in app code via view)
-CREATE POLICY "anon_read_reports"
+-- Reports: anon CANNOT read (frontend uses server endpoints, gate logic in app code)
+CREATE POLICY "anon_no_read_reports"
   ON geo_check_reports FOR SELECT
-  USING (true);
+  USING (false);
 
 -- Reports: service role full access
 CREATE POLICY "service_role_all_reports"
