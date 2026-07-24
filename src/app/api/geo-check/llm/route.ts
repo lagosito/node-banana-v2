@@ -237,6 +237,11 @@ export async function POST(req: NextRequest) {
       return json({ error: "Keine LLM-Provider konfiguriert" }, { status: 500 });
     }
 
+    // Mark all providers as "running" before starting (survives function timeout)
+    for (const provider of enabledProviders) {
+      await setProviderStatus(report.id, provider, { status: "running", queriesRun: 0, mentions: 0 });
+    }
+
     const t0 = Date.now();
 
     // Run each provider with all prompts

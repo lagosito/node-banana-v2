@@ -204,12 +204,12 @@ export async function getReportByDomain(domain: string): Promise<ReportRow | nul
   const sb = supabase();
   if (!sb) return null;
 
-  // Only return completed or error reports — never serve pending/running as cache
+  // Only return completed reports as cache — errors and pending are never served
   const { data, error } = await sb
     .from("geo_check_reports")
     .select("*")
     .eq("domain", domain)
-    .in("status", ["completed", "error"])
+    .eq("status", "completed")
     .gt("expires_at", new Date().toISOString())
     .order("created_at", { ascending: false })
     .limit(1)
@@ -219,8 +219,8 @@ export async function getReportByDomain(domain: string): Promise<ReportRow | nul
   return data as ReportRow;
 }
 
-/** Clean up orphaned pending/running rows older than N minutes. */
-export async function cleanupOrphanedReports(maxAgeMinutes = 10): Promise<number> {
+/** Mark orphaned pending/running rows as expired (never delete). */
+export async function expireOrphanedReports(maxAgeMinutes = 10): Promise<number> {
   const sb = supabase();
   if (!sb) return 0;
 
@@ -228,7 +228,7 @@ export async function cleanupOrphanedReports(maxAgeMinutes = 10): Promise<number
 
   const { data, error } = await sb
     .from("geo_check_reports")
-    .delete()
+    .update({ status: "expired" })
     .in("status", ["pending", "running"])
     .lt("created_at", cutoff)
     .select("id");
