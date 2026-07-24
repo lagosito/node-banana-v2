@@ -75,6 +75,10 @@ function buildV2Phase1(row: any): Record<string, unknown> {
 }
 
 function formatCheck(check: ScoreCheck) {
+  // aiVisibility placeholder: show as "pending" not "failed"
+  if (check.id === "ai-vis-placeholder") {
+    return { id: check.id, label: check.label, passed: null, weight: check.weight, detail: "Wird nach KI-Abfragen berechnet", status: "pending" };
+  }
   return { id: check.id, label: check.label, passed: check.passed, weight: check.weight, detail: check.detail };
 }
 
