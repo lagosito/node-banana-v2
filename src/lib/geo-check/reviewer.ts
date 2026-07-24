@@ -1,5 +1,5 @@
 // GEO Check — Anti-Hallucination Reviewer
-// Second cheap model (gemini-2.5-flash) validates findings against VerifiedFacts.
+// Second cheap model (gpt-4o-mini) validates findings against VerifiedFacts.
 // Ensures numbers in summary/headline match categoryScores exactly.
 
 import type { VerifiedFacts } from "./crawler";
