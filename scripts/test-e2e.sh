@@ -1,18 +1,19 @@
 #!/bin/bash
-# GEO-Check End-to-End Test — 11 control domains
-# Runs Phase 1 (crawl + score) + Phase 2 (3 providers) for each domain
-# Usage: ./scripts/test-e2e.sh [--phase1-only] [--domain=DOMAIN]
+# GEO-Check E2E Test v2 — Phase 1 all 11, Phase 2 only 4 (Gemini quota safe)
+# Usage: ./scripts/test-e2e.sh [--phase1-only] [--domain=DOMAIN] [--phase2-domains=4]
 
 set -euo pipefail
 
 BASE_URL="${GEO_CHECK_URL:-http://localhost:3000}"
 PHASE1_ONLY=false
 SINGLE_DOMAIN=""
+PHASE2_COUNT=4  # Gemini quota: 20/day, 4 domains × 4 questions = 16 calls
 
 for arg in "$@"; do
   case $arg in
     --phase1-only) PHASE1_ONLY=true ;;
     --domain=*) SINGLE_DOMAIN="${arg#*=}" ;;
+    --phase2-domains=*) PHASE2_COUNT="${arg#*=}" ;;
   esac
 done
 
@@ -31,14 +32,17 @@ DOMAINS=(
 )
 
 echo "═══════════════════════════════════════"
-echo "GEO-Check E2E Test — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+echo "GEO-Check E2E Test v2 — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "Target: ${BASE_URL}"
-echo "Domains: ${#DOMAINS[@]}"
-echo "Phase 1 only: ${PHASE1_ONLY}"
+echo "Phase 1: ALL ${#DOMAINS[@]} domains"
+echo "Phase 2: ${PHASE2_COUNT} domains (Gemini quota safe)"
 echo "═══════════════════════════════════════"
 
 RESULTS_DIR="scripts/e2e-results-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$RESULTS_DIR"
+
+PHASE2_DONE=0
+REPORT_IDS=()
 
 for domain in "${DOMAINS[@]}"; do
   if [[ -n "$SINGLE_DOMAIN" && "$domain" != "$SINGLE_DOMAIN" ]]; then
@@ -75,36 +79,30 @@ for domain in "${DOMAINS[@]}"; do
   echo "  ✓ Phase 1: ${ELAPSED_MS}ms | score=${OVERALL_SCORE} | status=${STATUS} | id=${REPORT_ID}"
   echo "$BODY" > "${RESULTS_DIR}/${domain}-phase1.json"
 
-  if [[ "$PHASE1_ONLY == true" ]]; then
+  if [[ "$PHASE1_ONLY == true" || -z "$REPORT_ID" ]]; then
     continue
   fi
 
-  if [[ -z "$REPORT_ID" ]]; then
-    echo "  ✗ No report ID, skipping Phase 2"
-    continue
-  fi
+  # Phase 2: LLM providers (only first N domains)
+  if [[ $PHASE2_DONE -lt $PHASE2_COUNT ]]; then
+    echo "  Phase 2: running LLM providers (${PHASE2_DONE}/${PHASE2_COUNT})..."
+    START=$(date +%s%N)
+    LLM_RESPONSE=$(curl -s -w "\n%{http_code}" --max-time 90 \
+      -X POST "${BASE_URL}/api/geo-check/llm" \
+      -H "Content-Type: application/json" \
+      -d "{\"reportId\": \"${REPORT_ID}\"}")
+    END=$(date +%s%N)
+    ELAPSED_MS=$(( (END - START) / 1000000 ))
 
-  # Phase 2: LLM providers
-  echo "  Phase 2: running LLM providers..."
-  START=$(date +%s%N)
-  LLM_RESPONSE=$(curl -s -w "\n%{http_code}" --max-time 90 \
-    -X POST "${BASE_URL}/api/geo-check/llm" \
-    -H "Content-Type: application/json" \
-    -d "{\"reportId\": \"${REPORT_ID}\"}")
-  END=$(date +%s%N)
-  ELAPSED_MS=$(( (END - START) / 1000000 ))
+    LLM_HTTP=$(echo "$LLM_RESPONSE" | tail -1)
+    LLM_BODY=$(echo "$LLM_RESPONSE" | sed '$d')
 
-  LLM_HTTP=$(echo "$LLM_RESPONSE" | tail -1)
-  LLM_BODY=$(echo "$LLM_RESPONSE" | sed '$d')
-
-  if [[ "$LLM_HTTP" != "200" ]]; then
-    echo "  ✗ Phase 2 failed: HTTP ${LLM_HTTP}"
-    echo "$LLM_BODY" > "${RESULTS_DIR}/${DOMAIN}-phase2-error.json"
-    continue
-  fi
-
-  LLM_STATUS=$(echo "$LLM_BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
-  PROVIDER_STATUS=$(echo "$LLM_BODY" | python3 -c "
+    if [[ "$LLM_HTTP" != "200" ]]; then
+      echo "  ✗ Phase 2 failed: HTTP ${LLM_HTTP}"
+      echo "$LLM_BODY" > "${RESULTS_DIR}/${domain}-phase2-error.json"
+    else
+      LLM_STATUS=$(echo "$LLM_BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
+      PROVIDER_STATUS=$(echo "$LLM_BODY" | python3 -c "
 import sys,json
 d = json.load(sys.stdin)
 ps = d.get('providerStatus',{})
@@ -115,8 +113,16 @@ for p in ['gemini','openai','perplexity']:
 print(' | '.join(parts))
 " 2>/dev/null || echo "parse error")
 
-  echo "  ✓ Phase 2: ${ELAPSED_MS}ms | status=${LLM_STATUS} | ${PROVIDER_STATUS}"
-  echo "$LLM_BODY" > "${RESULTS_DIR}/${domain}-phase2.json"
+      echo "  ✓ Phase 2: ${ELAPSED_MS}ms | status=${LLM_STATUS} | ${PROVIDER_STATUS}"
+      echo "$LLM_BODY" > "${RESULTS_DIR}/${domain}-phase2.json"
+      REPORT_IDS+=("${REPORT_ID}")
+    fi
+
+    PHASE2_DONE=$((PHASE2_DONE + 1))
+    sleep 2  # Rate limit courtesy between providers
+  else
+    echo "  Phase 2: skipped (quota limit: ${PHASE2_COUNT} domains)"
+  fi
 
   # Phase 3: Read report (gated)
   REPORT_RESPONSE=$(curl -s --max-time 10 \
@@ -124,20 +130,27 @@ print(' | '.join(parts))
   GATED=$(echo "$REPORT_RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('gated','?'))" 2>/dev/null || echo "?")
   echo "  ✓ Report: gated=${GATED}"
 
-  sleep 1  # Rate limit courtesy
+  sleep 1
 done
 
 echo ""
 echo "═══════════════════════════════════════"
 echo "Results saved to: ${RESULTS_DIR}/"
+echo "Phase 1: ${#DOMAINS[@]} domains crawled"
+echo "Phase 2: ${PHASE2_DONE} domains with LLM"
 echo "═══════════════════════════════════════"
 
-# Summary
+# Summary table
 echo ""
 echo "SUMMARY:"
+echo "Domain                  | Score | Phase 2 | Status"
+echo "------------------------|-------|---------|-------"
 for f in "${RESULTS_DIR}"/*-phase1.json; do
   [[ -f "$f" ]] || continue
   domain=$(basename "$f" | sed 's/-phase1.json//')
   score=$(python3 -c "import sys,json; print(json.load(open('$f')).get('overallScore','?'))" 2>/dev/null || echo "?")
-  echo "  ${domain}: score=${score}"
+  has_phase2="no"
+  [[ -f "${RESULTS_DIR}/${domain}-phase2.json" ]] && has_phase2="yes"
+  status=$(python3 -c "import sys,json; print(json.load(open('${RESULTS_DIR}/${domain}-phase1.json')).get('status','?'))" 2>/dev/null || echo "?")
+  printf "%-24s| %-5s | %-7s | %s\n" "$domain" "$score" "$has_phase2" "$status"
 done

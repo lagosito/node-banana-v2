@@ -90,7 +90,7 @@ async function callOpenAIWithWebSearch(prompt: string): Promise<{ text: string; 
       signal: controller.signal,
       body: JSON.stringify({
         model: "gpt-4o",
-        tools: [{ type: "web_search_preview" }],
+        tools: [{ type: process.env.OPENAI_SEARCH_TOOL || "web_search_preview" }],
         input: prompt,
       }),
     });
