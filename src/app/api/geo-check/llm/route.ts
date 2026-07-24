@@ -355,8 +355,7 @@ export async function POST(req: NextRequest) {
       reportId: report.id,
       status: "completed",
       providerStatus: providerStatuses,
-      mentionRate,
-      queriesTested: totalQueries,
+      // mentionRate and queriesTested are GATED — served only via GET /report/[id] after unlock
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unbekannter Fehler";

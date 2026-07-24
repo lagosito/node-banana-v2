@@ -6,5 +6,13 @@
         { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" }
       ]
     }
-  ]
+  ],
+  "functions": {
+    "src/app/api/geo-check/llm/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/geo-check/quick/route.ts": {
+      "maxDuration": 30
+    }
+  }
 }
