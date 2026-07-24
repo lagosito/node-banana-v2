@@ -139,10 +139,13 @@ export async function POST(req: NextRequest) {
     }
     topProblems.sort((a, b) => b.impact.length - a.impact.length);
 
-    // Build findings
+    // Build findings (dedup by check id — same check in multiple categories appears once)
     const findings: Array<{ type: string; text: string; category: string }> = [];
+    const seenCheckIds = new Set<string>();
     for (const [key, cat] of Object.entries(scores.categoryScores)) {
       for (const check of cat.checks) {
+        if (seenCheckIds.has(check.id)) continue;
+        seenCheckIds.add(check.id);
         findings.push({
           type: check.passed ? "recommendation" : "finding",
           text: `${check.label}: ${check.detail}`,

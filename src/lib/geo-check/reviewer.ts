@@ -75,6 +75,9 @@ function buildReviewPrompt(
       description: facts.meta.description,
       canonical: facts.meta.canonical,
       htmlLang: facts.meta.htmlLang,
+      ogTitle: facts.meta.ogTitle,
+      ogDescription: facts.meta.ogDescription,
+      ogImage: facts.meta.ogImage,
     },
     schema: {
       jsonLdBlocks: facts.schema.jsonLdBlocks,
@@ -134,6 +137,7 @@ REGELN:
 3. "Kein Impressum" ist nur gueltig wenn hasImpressum === false.
 4. Zahlen im Summary und Headline muessen EXAKT mit den categoryScores uebereinstimmen.
 5. Wenn ein Finding korrekt ist und durch die Fakten gestuetzt wird, ist es "keep".
+6. Ein Feld das IM BLOCK existiert aber null, false oder leeren Wert hat, BESTAETIGT die Abwesenheit. "canonical": null heisst "kein Canonical-Tag" — das Finding ist korrekt und bekommt "keep". Nur droppen wenn das Feld komplett aus dem Block fehlt, nicht wenn es mit null/false/"" existiert.
 
 VERIFIZIERTE FAKTEN:
 ${JSON.stringify(factsSummary, null, 2)}

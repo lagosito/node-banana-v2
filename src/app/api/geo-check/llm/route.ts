@@ -319,8 +319,11 @@ export async function POST(req: NextRequest) {
     let qualityMeta = null;
     try {
       const findings: Array<{ type: "finding" | "recommendation"; text: string; category?: string }> = [];
+      const seenCheckIds = new Set<string>();
       for (const [catKey, cat] of Object.entries(categoryScores)) {
         for (const check of (cat as any).checks) {
+          if (seenCheckIds.has(check.id)) continue;
+          seenCheckIds.add(check.id);
           findings.push({
             type: check.passed ? "recommendation" : "finding",
             text: `${check.label}: ${check.detail}`,
