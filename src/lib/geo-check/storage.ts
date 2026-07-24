@@ -1,5 +1,4 @@
-// GEO Check — Supabase persistence layer
-// Replaces in-memory Maps for reports, leads, and rate limits.
+// GEO Check — Supabase persistence layer (v2 — two-phase architecture)
 
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
 
@@ -12,73 +11,67 @@ export interface ReportRow {
   url: string;
   resolved_url: string | null;
   lang: string | null;
+  // Phase 1: deterministic
   overall_score: number | null;
   category_scores: any;
   citability: any;
   findings: any;
-  recommendations: any;
   top_problems: any;
-  llm_visibility: any;
   verified_facts: any;
+  // Phase 2: LLM
+  status: "pending" | "running" | "completed" | "error";
+  provider_status: Record<string, { status: string; queriesRun: number; mentions: number; error?: string }>;
+  llm_results: any;
+  mention_rate: number | null;
+  queries_tested: number | null;
+  // Phase 2b: review
   quality_meta: any;
-  timings: any;
+  recommendations: any;
+  // Metadata
   brand_name: string | null;
   vertical: string | null;
   region: string | null;
   subpages: any;
   ai_crawler_facts: any;
-  mention_rate: number | null;
-  queries_tested: number | null;
+  timings: any;
+  unlocked: boolean;
+  lead_id: string | null;
   created_at: string;
   expires_at: string;
-  lead_id: string | null;
 }
 
-export interface LeadRow {
-  id: string;
-  report_id: string;
-  first_name: string;
-  last_name: string;
-  email: string;
-  consent_privacy: boolean;
-  created_at: string;
-}
+export type ProviderName = "gemini" | "openai" | "perplexity";
 
-// ─── Reports ───
+// ─── Helpers ───
 
 function supabase() {
   if (!isSupabaseConfigured()) return null;
   return getSupabase();
 }
 
-/** Generate a short slug from UUID (first 8 hex chars, no dashes) */
 export function generateShortSlug(uuid: string): string {
   return uuid.replace(/-/g, "").slice(0, 8);
 }
 
-/** Save a new report. Returns { id, shortSlug }. */
-export async function saveReport(data: {
+// ─── Phase 1: Create report with deterministic scores ───
+
+export async function createReport(data: {
   domain: string;
   url: string;
   resolvedUrl?: string;
   lang?: string;
-  overallScore?: number;
-  categoryScores?: any;
-  citability?: any;
-  findings?: any;
-  recommendations?: any;
-  topProblems?: any;
-  llmVisibility?: any;
-  verifiedFacts?: any;
-  qualityMeta?: any;
-  timings?: any;
+  overallScore: number;
+  categoryScores: any;
+  citability: any;
+  findings: any;
+  topProblems: any;
+  verifiedFacts: any;
   brandName?: string;
   vertical?: string;
   region?: string;
   subpages?: string[];
   aiCrawlerFacts?: any;
-  mentionRate?: number | null;
-  queriesTested?: number;
+  timings?: any;
 }): Promise<{ id: string; shortSlug: string }> {
   const sb = supabase();
   if (!sb) throw new Error("Supabase not configured");
@@ -91,37 +84,102 @@ export async function saveReport(data: {
       url: data.url,
       resolved_url: data.resolvedUrl ?? null,
       lang: data.lang ?? null,
-      overall_score: data.overallScore ?? null,
-      category_scores: data.categoryScores ?? null,
-      citability: data.citability ?? null,
-      findings: data.findings ?? null,
-      recommendations: data.recommendations ?? null,
-      top_problems: data.topProblems ?? null,
-      llm_visibility: data.llmVisibility ?? null,
-      verified_facts: data.verifiedFacts ?? null,
-      quality_meta: data.qualityMeta ?? null,
-      timings: data.timings ?? null,
+      overall_score: data.overallScore,
+      category_scores: data.categoryScores,
+      citability: data.citability,
+      findings: data.findings,
+      top_problems: data.topProblems,
+      verified_facts: data.verifiedFacts,
+      status: "pending",
+      provider_status: {},
       brand_name: data.brandName ?? null,
       vertical: data.vertical ?? null,
       region: data.region ?? null,
       subpages: data.subpages ?? [],
       ai_crawler_facts: data.aiCrawlerFacts ?? null,
-      mention_rate: data.mentionRate ?? null,
-      queries_tested: data.queriesTested ?? 0,
+      timings: data.timings ?? null,
     })
     .select("id, short_slug")
     .single();
 
-  if (error) throw new Error(`saveReport: ${error.message}`);
+  if (error) throw new Error(`createReport: ${error.message}`);
   return { id: row.id, shortSlug: row.short_slug };
 }
 
-/** Fetch a report by UUID id OR by short_slug. */
+// ─── Phase 2: Update report with LLM results ───
+
+export async function setReportStatus(
+  id: string,
+  status: "running" | "completed" | "error",
+): Promise<void> {
+  const sb = supabase();
+  if (!sb) return;
+  const { error } = await sb.from("geo_check_reports").update({ status }).eq("id", id);
+  if (error) throw new Error(`setReportStatus: ${error.message}`);
+}
+
+export async function setProviderStatus(
+  id: string,
+  provider: ProviderName,
+  providerStatus: { status: string; queriesRun: number; mentions: number; error?: string },
+): Promise<void> {
+  const sb = supabase();
+  if (!sb) return;
+
+  // Read current provider_status, merge, write back
+  const { data: row } = await sb
+    .from("geo_check_reports")
+    .select("provider_status")
+    .eq("id", id)
+    .single();
+
+  const current = row?.provider_status || {};
+  const updated = { ...current, [provider]: providerStatus };
+
+  const { error } = await sb
+    .from("geo_check_reports")
+    .update({ provider_status: updated })
+    .eq("id", id);
+
+  if (error) throw new Error(`setProviderStatus: ${error.message}`);
+}
+
+export async function setLlmResults(
+  id: string,
+  data: {
+    llm_results: any;
+    mention_rate: number | null;
+    queries_tested: number;
+    quality_meta?: any;
+    recommendations?: any;
+    timings?: any;
+  },
+): Promise<void> {
+  const sb = supabase();
+  if (!sb) return;
+
+  const { error } = await sb
+    .from("geo_check_reports")
+    .update({
+      llm_results: data.llm_results,
+      mention_rate: data.mention_rate,
+      queries_tested: data.queries_tested,
+      quality_meta: data.quality_meta ?? null,
+      recommendations: data.recommendations ?? null,
+      timings: data.timings ?? null,
+      status: "completed",
+    })
+    .eq("id", id);
+
+  if (error) throw new Error(`setLlmResults: ${error.message}`);
+}
+
+// ─── Read ───
+
 export async function getReport(idOrSlug: string): Promise<ReportRow | null> {
   const sb = supabase();
   if (!sb) return null;
 
-  // Try UUID first, then short_slug
   let { data, error } = await sb
     .from("geo_check_reports")
     .select("*")
@@ -142,7 +200,6 @@ export async function getReport(idOrSlug: string): Promise<ReportRow | null> {
   return data as ReportRow;
 }
 
-/** Fetch a report by domain (used for cache lookups). */
 export async function getReportByDomain(domain: string): Promise<ReportRow | null> {
   const sb = supabase();
   if (!sb) return null;
@@ -160,38 +217,17 @@ export async function getReportByDomain(domain: string): Promise<ReportRow | nul
   return data as ReportRow;
 }
 
-/** Update a report (e.g. attach lead_id). */
-export async function updateReport(
-  id: string,
-  patch: Partial<Pick<ReportRow, "lead_id" | "timings" | "recommendations" | "quality_meta">>,
-): Promise<void> {
-  const sb = supabase();
-  if (!sb) return;
-
-  const { error } = await sb
-    .from("geo_check_reports")
-    .update(patch)
-    .eq("id", id);
-
-  if (error) throw new Error(`updateReport: ${error.message}`);
-}
-
-/** Touch a report's expires_at (extend TTL by 7 days). */
 export async function touchReport(id: string): Promise<void> {
   const sb = supabase();
   if (!sb) return;
-
-  const { error } = await sb
+  await sb
     .from("geo_check_reports")
     .update({ expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() })
     .eq("id", id);
-
-  if (error) throw new Error(`touchReport: ${error.message}`);
 }
 
 // ─── Leads ───
 
-/** Create a lead and link it to a report. Returns lead_id. */
 export async function createLead(params: {
   reportId: string;
   firstName: string;
@@ -216,86 +252,53 @@ export async function createLead(params: {
 
   if (error) throw new Error(`createLead: ${error.message}`);
 
-  // Link lead to report
-  await updateReport(params.reportId, { lead_id: data.id });
+  // Link lead to report and set unlocked=true
+  await sb
+    .from("geo_check_reports")
+    .update({ lead_id: data.id, unlocked: true })
+    .eq("id", params.reportId);
 
   return data.id;
 }
 
 // ─── Rate Limits ───
 
-/** Check if an IP has exceeded the daily limit. */
 export async function checkRateLimitDb(
   ip: string,
   maxPerDay = 5,
 ): Promise<{ allowed: boolean; remaining: number }> {
   const sb = supabase();
-  if (!sb) return { allowed: true, remaining: maxPerDay }; // fallback if no DB
+  if (!sb) return { allowed: true, remaining: maxPerDay };
 
   const today = new Date().toISOString().split("T")[0];
 
-  // Upsert: increment count
-  const { data, error } = await sb
-    .from("geo_check_rate_limits")
-    .upsert(
-      { ip, day: today, count: 1 },
-      { onConflict: "ip,day", ignoreDuplicates: false },
-    )
-    .select("count")
-    .single();
-
-  // If upsert succeeded, count was set to 1 (new row) — need to increment
-  // Actually, upsert with count:1 will set to 1. We need raw SQL for atomic increment.
-  // Fallback: read, then update atomically via RPC or raw query.
-
-  // Simpler approach: use a single RPC call
+  // Try RPC first (atomic increment)
   const { data: rpcData, error: rpcError } = await sb.rpc("increment_rate_limit", {
     p_ip: ip,
     p_day: today,
     p_max: maxPerDay,
   });
 
-  if (rpcError) {
-    // Fallback: try read-modify-write (not atomic but acceptable for rate limiting)
-    const { data: existing } = await sb
-      .from("geo_check_rate_limits")
-      .select("count")
-      .eq("ip", ip)
-      .eq("day", today)
-      .single();
-
-    const currentCount = existing?.count ?? 0;
-    if (currentCount >= maxPerDay) {
-      return { allowed: false, remaining: 0 };
-    }
-
-    await sb
-      .from("geo_check_rate_limits")
-      .upsert({ ip, day: today, count: currentCount + 1 }, { onConflict: "ip,day" });
-
-    return { allowed: true, remaining: maxPerDay - currentCount - 1 };
+  if (!rpcError && rpcData !== null) {
+    const count = rpcData as number;
+    if (count > maxPerDay) return { allowed: false, remaining: 0 };
+    return { allowed: true, remaining: maxPerDay - count };
   }
 
-  const count = rpcData as number;
-  if (count > maxPerDay) {
-    return { allowed: false, remaining: 0 };
-  }
-  return { allowed: true, remaining: maxPerDay - count };
-}
+  // Fallback: read-modify-write
+  const { data: existing } = await sb
+    .from("geo_check_rate_limits")
+    .select("count")
+    .eq("ip", ip)
+    .eq("day", today)
+    .single();
 
-// ─── Cleanup ───
+  const currentCount = existing?.count ?? 0;
+  if (currentCount >= maxPerDay) return { allowed: false, remaining: 0 };
 
-/** Delete expired reports (call periodically). */
-export async function cleanupExpired(): Promise<number> {
-  const sb = supabase();
-  if (!sb) return 0;
+  await sb
+    .from("geo_check_rate_limits")
+    .upsert({ ip, day: today, count: currentCount + 1 }, { onConflict: "ip,day" });
 
-  const { data, error } = await sb
-    .from("geo_check_reports")
-    .delete()
-    .lt("expires_at", new Date().toISOString())
-    .select("id");
-
-  if (error) return 0;
-  return data?.length ?? 0;
+  return { allowed: true, remaining: maxPerDay - currentCount - 1 };
 }

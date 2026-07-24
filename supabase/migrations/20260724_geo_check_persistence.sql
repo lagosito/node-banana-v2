@@ -1,5 +1,5 @@
--- GEO-Check: Persist reports + leads in Supabase
--- Run via Supabase SQL Editor or: psql -f this_file.sql
+-- GEO-Check: Persist reports + leads in Supabase (v2 — two-phase architecture)
+-- Run via Supabase SQL Editor
 
 -- ─── Reports table ───
 CREATE TABLE IF NOT EXISTS geo_check_reports (
@@ -9,30 +9,43 @@ CREATE TABLE IF NOT EXISTS geo_check_reports (
   url           TEXT NOT NULL,
   resolved_url  TEXT,
   lang          TEXT,
+
+  -- Phase 1: deterministic scores (filled by /quick)
   overall_score INT,
   category_scores   JSONB,
   citability        JSONB,
   findings          JSONB,
-  recommendations   JSONB,
   top_problems      JSONB,
-  llm_visibility    JSONB,
   verified_facts    JSONB,
-  quality_meta      JSONB,
-  timings           JSONB,
-  brand_name        TEXT,
-  vertical          TEXT,
-  region            TEXT,
-  subpages          JSONB,
-  ai_crawler_facts  JSONB,
-  mention_rate      NUMERIC,
-  queries_tested    INT,
+
+  -- Phase 2: LLM results (filled by /llm)
+  status        TEXT NOT NULL DEFAULT 'pending',  -- pending | running | completed | error
+  provider_status JSONB DEFAULT '{}'::jsonb,       -- { gemini: {status, queriesRun, mentions}, openai: {...}, perplexity: {...} }
+  llm_results   JSONB,                             -- raw LLM responses per provider
+  mention_rate  NUMERIC,
+  queries_tested INT,
+
+  -- Phase 2b: review (filled after LLM)
+  quality_meta  JSONB,
+  recommendations JSONB,
+
+  -- Metadata
+  brand_name    TEXT,
+  vertical      TEXT,
+  region        TEXT,
+  subpages      JSONB,
+  ai_crawler_facts JSONB,
+  timings       JSONB,
+  unlocked      BOOLEAN NOT NULL DEFAULT false,    -- email gate status
+  lead_id       UUID,
+
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  expires_at    TIMESTAMPTZ NOT NULL DEFAULT (now() + INTERVAL '7 days'),
-  lead_id       UUID
+  expires_at    TIMESTAMPTZ NOT NULL DEFAULT (now() + INTERVAL '7 days')
 );
 
 CREATE INDEX IF NOT EXISTS idx_geo_reports_domain ON geo_check_reports(domain);
 CREATE INDEX IF NOT EXISTS idx_geo_reports_slug   ON geo_check_reports(short_slug);
+CREATE INDEX IF NOT EXISTS idx_geo_reports_status ON geo_check_reports(status);
 CREATE INDEX IF NOT EXISTS idx_geo_reports_expires ON geo_check_reports(expires_at);
 
 -- ─── Leads table ───
@@ -57,30 +70,27 @@ CREATE TABLE IF NOT EXISTS geo_check_rate_limits (
   PRIMARY KEY (ip, day)
 );
 
--- ─── RLS: public read for reports by id or short_slug ───
+-- ─── RLS ───
 ALTER TABLE geo_check_reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE geo_check_leads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE geo_check_rate_limits ENABLE ROW LEVEL SECURITY;
 
--- Reports: anyone can read (gated logic handled in app code)
-CREATE POLICY "Public read reports"
+-- Reports: anon can read safe fields only (gated logic in app code via view)
+CREATE POLICY "anon_read_reports"
   ON geo_check_reports FOR SELECT
   USING (true);
 
--- Reports: service role can do everything
-CREATE POLICY "Service role full access reports"
+-- Reports: service role full access
+CREATE POLICY "service_role_all_reports"
   ON geo_check_reports FOR ALL
   USING (auth.role() = 'service_role');
 
 -- Leads: service role only
-CREATE POLICY "Service role full access leads"
+CREATE POLICY "service_role_all_leads"
   ON geo_check_leads FOR ALL
   USING (auth.role() = 'service_role');
 
--- Rate limits: service role only (no public access)
-ALTER TABLE geo_check_rate_limits ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Service role full access rate_limits"
+-- Rate limits: service role only
+CREATE POLICY "service_role_all_rate_limits"
   ON geo_check_rate_limits FOR ALL
   USING (auth.role() = 'service_role');
-
--- ─── Auto-cleanup: expires_at index handles TTL ───
--- Reports are filtered by expires_at in app code (WHERE expires_at > now())

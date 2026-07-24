@@ -1,18 +1,30 @@
-// GEO Check — Report endpoint with Supabase persistence
+// GEO Check — Report endpoint (gated by unlocked status)
 // GET /api/geo-check/report/[id]
 
 import { NextRequest, NextResponse } from "next/server";
-import { getReport, touchReport } from "@/lib/geo-check/storage";
+import { getReport, touchReport, createLead } from "@/lib/geo-check/storage";
 
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
+
+function json(data: unknown, init?: ResponseInit) {
+  const status = init?.status || 200;
+  const headers = { ...CORS_HEADERS, ...(init?.headers || {}) };
+  return NextResponse.json(data, { status, headers });
+}
+
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
 
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
 }
+
+// ─── GET: Read report ───
 
 export async function GET(
   req: NextRequest,
@@ -20,76 +32,110 @@ export async function GET(
 ) {
   try {
     const { id } = params;
-
     const report = await getReport(id);
+
     if (!report) {
-      return NextResponse.json(
-        { error: "Report nicht gefunden" },
-        { status: 404, headers: CORS_HEADERS },
-      );
+      return json({ error: "Report nicht gefunden" }, { status: 404 });
     }
 
     // Extend TTL on access
     await touchReport(report.id);
 
-    const hasLead = !!report.lead_id;
+    const isUnlocked = report.unlocked;
 
-    if (hasLead) {
-      return NextResponse.json(
-        {
-          reportId: report.id,
-          shortSlug: report.short_slug,
-          domain: report.domain,
-          brandName: report.brand_name,
-          overallScore: report.overall_score,
-          categoryScores: report.category_scores,
-          citability: report.citability,
-          verdictLabel: report.quality_meta?.verdictLabel,
-          verdictHeadline: report.quality_meta?.correctedHeadline || "",
-          summary: report.quality_meta?.correctedSummary || "",
-          qualityMeta: report.quality_meta,
-          topProblems: report.top_problems,
-          quickWins: [],
-          aiCrawlerFacts: report.ai_crawler_facts,
-          mentionRate: report.mention_rate,
-          queriesTested: report.queries_tested,
-          subpages: report.subpages || [],
-          recommendations: report.recommendations || [],
-          createdAt: report.created_at,
-          gated: true,
-        },
-        { headers: CORS_HEADERS },
-      );
+    // Safe response: always included
+    const response: Record<string, unknown> = {
+      reportId: report.id,
+      shortSlug: report.short_slug,
+      domain: report.domain,
+      overallScore: report.overall_score,
+      categoryScores: report.category_scores,
+      citability: report.citability,
+      topProblems: report.top_problems,
+      aiCrawlerFacts: report.ai_crawler_facts,
+      subpages: report.subpages || [],
+      status: report.status,
+      providerStatus: report.provider_status || {},
+      createdAt: report.created_at,
+      gated: !isUnlocked,
+    };
+
+    // Gated content: only when unlocked
+    if (isUnlocked) {
+      response.mentionRate = report.mention_rate;
+      response.queriesTested = report.queries_tested;
+      response.recommendations = report.recommendations || [];
+      response.qualityMeta = report.quality_meta;
+      response.llmResults = report.llm_results;
     }
 
-    // Ungated version
-    return NextResponse.json(
-      {
-        reportId: report.id,
-        shortSlug: report.short_slug,
-        domain: report.domain,
-        overallScore: report.overall_score,
-        categoryScores: report.category_scores,
-        citability: report.citability,
-        verdictLabel: report.quality_meta?.verdictLabel,
-        verdictHeadline: report.quality_meta?.correctedHeadline || "",
-        summary: "",
-        topProblems: report.top_problems,
-        quickWins: [],
-        aiCrawlerFacts: report.ai_crawler_facts,
-        mentionRate: report.mention_rate,
-        queriesTested: report.queries_tested,
-        subpages: report.subpages || [],
-        gated: false,
-        gateUrl: `/api/geo-check/quick`,
-      },
-      { headers: CORS_HEADERS },
-    );
+    return json(response);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unbekannter Fehler";
-    return NextResponse.json(
-      { error: message },
-      { status: 500, headers: CORS_HEADERS },
-    );
+    return json({ error: message }, { status: 500 });
+  }
+}
+
+// ─── POST: Gate (email unlock) ───
+
+export async function POST(req: NextRequest) {
+  try {
+    const { reportId, vorname, nachname, email, dsgvo } = await req.json();
+
+    if (!reportId || !vorname || !nachname || !email) {
+      return json({ error: "Alle Felder sind erforderlich" }, { status: 400 });
+    }
+
+    if (!isValidEmail(email)) {
+      return json({ error: "Ungueltige E-Mail-Adresse" }, { status: 400 });
+    }
+
+    if (dsgvo !== true) {
+      return json({ error: "DSGVO-Einwilligung ist erforderlich" }, { status: 400 });
+    }
+
+    const report = await getReport(reportId);
+    if (!report) {
+      return json({ error: "Report nicht gefunden" }, { status: 404 });
+    }
+
+    if (report.unlocked) {
+      return json({ error: "Report bereits freigeschaltet" }, { status: 409 });
+    }
+
+    // Create lead and unlock report
+    await createLead({
+      reportId: report.id,
+      firstName: vorname,
+      lastName: nachname,
+      email,
+      consentPrivacy: true,
+    });
+
+    // Re-fetch to get updated report with unlocked=true
+    const unlocked = await getReport(reportId);
+
+    return json({
+      reportId: unlocked!.id,
+      shortSlug: unlocked!.short_slug,
+      domain: unlocked!.domain,
+      overallScore: unlocked!.overall_score,
+      categoryScores: unlocked!.category_scores,
+      citability: unlocked!.citability,
+      topProblems: unlocked!.top_problems,
+      aiCrawlerFacts: unlocked!.ai_crawler_facts,
+      subpages: unlocked!.subpages || [],
+      status: unlocked!.status,
+      providerStatus: unlocked!.provider_status || {},
+      mentionRate: unlocked!.mention_rate,
+      queriesTested: unlocked!.queries_tested,
+      recommendations: unlocked!.recommendations || [],
+      qualityMeta: unlocked!.quality_meta,
+      llmResults: unlocked!.llm_results,
+      gated: false,
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Unbekannter Fehler";
+    return json({ error: message }, { status: 500 });
   }
 }
