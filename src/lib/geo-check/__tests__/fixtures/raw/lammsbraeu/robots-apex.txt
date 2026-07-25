@@ -1,0 +1,14 @@
+User-agent: *
+Disallow: /kontakt/success.html
+Disallow: /newsletter-anmeldung-success.html
+Disallow: /newsletter-anmeldung-optin.html
+Disallow: /finder-registrierung-success.html
+Disallow: /finder-registrierung-optin.html
+Disallow: /blog/topic/*
+
+Sitemap: https://www.lammsbraeu.de/hubfs/resources/sitemap.xml
+Disallow: /_hcms/preview/
+Disallow: /hs/manage-preferences/
+Disallow: /hs/preferences-center/
+Disallow: /*?*hs_preview=*
+Disallow: /*?*hsCacheBuster=*

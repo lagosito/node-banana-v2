@@ -1,0 +1,11 @@
+User-agent: *
+Disallow: /app/
+Disallow: /j/
+Allow: /app/module/webproduct/goto/
+Allow: /app/download/
+Crawl-Delay: 5
+Sitemap: https://www.stuckateur-berlin.de/sitemap.xml
+
+User-agent: MJ12bot
+User-agent: AhrefsBot
+Disallow: /

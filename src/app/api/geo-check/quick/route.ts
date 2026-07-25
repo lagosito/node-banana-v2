@@ -68,6 +68,7 @@ function buildV2Phase1(row: any): Record<string, unknown> {
     aiCrawlerFacts: row.ai_crawler_facts,
     subpages: row.subpages || [],
     quickWins: [],
+    partialCrawl: row.verified_facts?.partialCrawl ?? false,
     // Phase 2 not done yet
     status: row.status,
     providerStatus: row.provider_status || {},

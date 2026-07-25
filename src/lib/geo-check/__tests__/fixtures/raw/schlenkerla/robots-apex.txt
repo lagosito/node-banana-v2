@@ -1,0 +1,21 @@
+User-Agent: *
+
+Disallow: /cgi-bin
+Disallow: /abi95
+Disallow: /Fasszettel
+Disallow: /temp
+Disallow: /Reservierung
+Disallow: /Templates
+Disallow: /Zeiterfassung
+Disallow: /cgi-data
+Disallow: /umleitung
+Disallow: /Dienstplan
+Disallow: /export
+Disallow: /familie
+Disallow: /ioncube
+Disallow: /jtl-shop312
+Disallow: /Meldezettel
+Disallow: /Stehseidla
+Disallow: /kontakt/datenschutz.html
+
+Sitemap: https://www.schlenkerla.de/sitemap.xml

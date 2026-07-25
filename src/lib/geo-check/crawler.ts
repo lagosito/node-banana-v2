@@ -160,6 +160,7 @@ export interface VerifiedFacts {
     requests: Array<{ url: string; ms: number; status: number; bytes: number }>;
   };
   scannedUrls: string[];
+  partialCrawl: boolean;
   collectedAt: string;
 }
 
@@ -167,7 +168,7 @@ export interface VerifiedFacts {
 
 // CHANGE 3: Separate timeouts per resource type
 const PAGE_TIMEOUT = 4000;
-const MAX_PAGES = 15; // Hard cap: home + legal + subpages + sitemap children
+const CRAWL_TIME_BUDGET_MS = 12_000; // Time budget for entire crawl (Vercel safe)
 const ROBOTS_TIMEOUT = 3000;
 const SITEMAP_TIMEOUT = 6000;
 const SITEMAP_CHILD_TIMEOUT = 6000;
@@ -1247,11 +1248,27 @@ export async function collectFacts(url: string): Promise<VerifiedFacts> {
     }
   }
 
-  // Enforce hard page cap (home already fetched = 1 page used)
-  const remainingBudget = MAX_PAGES - 1; // 1 for home
-  if (remainingFetches.length > remainingBudget) {
-    remainingFetches.length = remainingBudget; // truncate in place
+  // Time-budget gate: only truncate CONTENT pages, never infrastructure (sitemap)
+  // Split: infrastructure always fires, content subject to budget
+  const infrastructureFetches = remainingFetches.filter(
+    (f) => f.category === "sitemap-child" || f.category === "sitemap-guess",
+  );
+  const contentFetches = remainingFetches.filter(
+    (f) => f.category !== "sitemap-child" && f.category !== "sitemap-guess",
+  );
+
+  const elapsedMs = performance.now() - totalStart;
+  const remainingBudgetMs = Math.max(0, CRAWL_TIME_BUDGET_MS - elapsedMs);
+  const maxContentFromBudget = Math.max(0, Math.floor(remainingBudgetMs / PAGE_TIMEOUT));
+  const droppedPages = contentFetches.length - maxContentFromBudget;
+  const partialCrawl = droppedPages > 0;
+  if (droppedPages > 0) {
+    contentFetches.length = maxContentFromBudget;
   }
+
+  // Reassemble: content (truncated) + infrastructure (always included)
+  remainingFetches.length = 0;
+  remainingFetches.push(...contentFetches, ...infrastructureFetches);
 
   // Fire ALL remaining URLs in ONE parallel batch
   const legalFetchStart = performance.now();
@@ -1358,20 +1375,20 @@ export async function collectFacts(url: string): Promise<VerifiedFacts> {
         if (/<sitemapindex[\s>]/i.test(smResult.text)) {
           const childUrls = extractSitemapChildUrls(smResult.text).slice(0, 3);
           sitemapChildrenTotalFromGuess = childUrls.length;
-          // Fire-and-forget: don't await, collect in background
-          Promise.allSettled(
+          // Await children — fire-and-forget loses results in serverless
+          const childResults = await Promise.allSettled(
             childUrls.map((childUrl) =>
               fetchFollowRedirects(childUrl, SITEMAP_CHILD_TIMEOUT).then((r) => ({ childUrl, result: r })),
             ),
-          ).then((childResults) => {
-            for (const cr of childResults) {
-              if (cr.status === "fulfilled" && cr.value.result?.ok) {
-                const { child, isPartial } = processSitemapChild(cr.value.result, cr.value.childUrl, false);
-                sitemapChildrenFromGuess.push(child);
-                if (child.ok) sitemapUrlCount += child.urlCount;
-              }
+          );
+          for (const cr of childResults) {
+            if (cr.status === "fulfilled" && cr.value.result?.ok) {
+              const { child, isPartial } = processSitemapChild(cr.value.result, cr.value.childUrl, false);
+              sitemapChildrenFromGuess.push(child);
+              if (child.ok) sitemapUrlCount += child.urlCount;
+              if (isPartial) sitemapPartial = true;
             }
-          });
+          }
         } else {
           sitemapUrlCount = countSitemapUrls(smResult.text);
         }
@@ -1563,6 +1580,7 @@ export async function collectFacts(url: string): Promise<VerifiedFacts> {
     },
     timings,
     scannedUrls,
+    partialCrawl,
     collectedAt: new Date().toISOString(),
   };
 }

@@ -1,0 +1,141 @@
+[
+  {
+    "domain": "stripe.com",
+    "label": "stripe",
+    "cms": "Custom",
+    "vertical": "FinTech",
+    "expectedTraits": [
+      "sitemap_from_robots",
+      "jsonld_organization",
+      "llms_txt",
+      "many_hreflangs",
+      "high_word_count"
+    ],
+    "notes": "Techo. Todo bien hecho. Sitemap via robots.txt con 3000+ URLs. llms.txt de 65KB."
+  },
+  {
+    "domain": "example.com",
+    "label": "example",
+    "cms": "Static",
+    "vertical": "none",
+    "expectedTraits": [
+      "no_schema",
+      "no_sitemap",
+      "no_llms_txt",
+      "minimal_content",
+      "single_page"
+    ],
+    "notes": "Piso degenerado. Una sola página trivial de 17 palabras. Sin nada implementado."
+  },
+  {
+    "domain": "buerklin-wolf.de",
+    "label": "buerklin",
+    "cms": "TYPO3",
+    "vertical": "Wein",
+    "expectedTraits": [
+      "sitemapindex_query_string",
+      "robots_txt_broken_sitemap",
+      "redirect_apex_to_www",
+      "jsonld_webservice"
+    ],
+    "notes": "Sitemapindex con query strings y entidad &amp; codificada. robots.txt declara placeholder roto. Redirect 301 apex→www."
+  },
+  {
+    "domain": "schlenkerla.de",
+    "label": "schlenkerla",
+    "cms": "Custom",
+    "vertical": "Craft Beer",
+    "expectedTraits": [
+      "nested_legal_pages",
+      "impressum_under_kontakt",
+      "no_jsonld",
+      "sitemap_from_robots"
+    ],
+    "notes": "Páginas legales anidadas bajo /kontakt/. Impressum en kontakt/anschrift.html#impressum. Trust bajo si no se descubren por link."
+  },
+  {
+    "domain": "schwarzwaldmilch.de",
+    "label": "schwarzwaldmilch",
+    "cms": "WordPress",
+    "vertical": "Feinkost",
+    "expectedTraits": [
+      "wordpress",
+      "wp_content_assets",
+      "schema_possible"
+    ],
+    "notes": "WordPress real. Marca alemana de lácteos."
+  },
+  {
+    "domain": "weingut-kranz.de",
+    "label": "weingut-kranz",
+    "cms": "Squarespace",
+    "vertical": "Wein",
+    "expectedTraits": [
+      "squarespace",
+      "limited_schema",
+      "cdn_assets"
+    ],
+    "notes": "Squarespace. Weingut en la Pfalz. CDN de assets cuadrado."
+  },
+  {
+    "domain": "lieken.de",
+    "label": "lieken",
+    "cms": "TYPO3",
+    "vertical": "Feinkost",
+    "expectedTraits": [
+      "typo3",
+      "fileadmin_assets",
+      "german_mittelstand"
+    ],
+    "notes": "TYPO3. Empresa de café alemana."
+  },
+  {
+    "domain": "frankenwein.de",
+    "label": "frankenwein",
+    "cms": "Static/Unknown",
+    "vertical": "Wein",
+    "expectedTraits": [
+      "no_cms_markers",
+      "simple_html",
+      "minimal_schema"
+    ],
+    "notes": "HTML estático o CMS custom sin markers visibles. Portal de vinos de Franconia."
+  },
+  {
+    "domain": "stuckateur-berlin.de",
+    "label": "stuckateur",
+    "cms": "Jimdo",
+    "vertical": "Gastro",
+    "expectedTraits": [
+      "jimdo",
+      "jimdo_cdn",
+      "limited_seo",
+      "small_business"
+    ],
+    "notes": "Jimdo. Empresa de estucos en Berlin. PYME típica."
+  },
+  {
+    "domain": "lammsbraeu.de",
+    "label": "lammsbraeu",
+    "cms": "Unknown",
+    "vertical": "Craft Beer",
+    "expectedTraits": [
+      "custom_cms",
+      "german_brewery",
+      "content_rich"
+    ],
+    "notes": "Cervecería de Neumarkt. CMS custom o middleware sin markers obvios."
+  },
+  {
+    "domain": "heise.de",
+    "label": "heise",
+    "cms": "Custom",
+    "vertical": "Tech",
+    "expectedTraits": [
+      "partial_ai_blocks",
+      "specific_groups_with_allow",
+      "malicious_crawler_section"
+    ],
+    "notes": "heise.de: Allow parciales para GPTBot/ClaudeBot/PerplexityBot + Disallow: / en seccion Malicious Crawler."
+  }
+]

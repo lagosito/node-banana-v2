@@ -29,6 +29,7 @@
     "autoprefixer": "^10.4.22",
     "jszip": "^3.10.1",
     "konva": "^10.0.12",
+    "linkedom": "^0.18.13",
     "mediabunny": "^1.31.0",
     "next": "^16.0.7",
     "openai": "^6.37.0",
