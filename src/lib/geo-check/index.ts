@@ -157,6 +157,32 @@ function cleanBrandName(raw: string): string {
   return name || extractBrandFromDomain("x.com"); // shouldn't happen
 }
 
+// ─── Brand Aliases ───
+
+const GENERIC = new Set(["weingut","winery","dr","dr.","home","startseite","willkommen","gmbh","co","kg","und"]);
+const deUmlaut = (s: string) => s
+  .replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue").replace(/ß/g,"ss")
+  .replace(/Ä/g,"Ae").replace(/Ö/g,"Oe").replace(/Ü/g,"Ue");
+
+export function buildBrandAliases(domain: string, brandName: string): string[] {
+  const out = new Set<string>();
+  const add = (s: string) => { if (s && s.trim().length > 1) out.add(s.trim()); };
+  add(domain);
+  const core = domain.split(".")[0];
+  add(core);
+  add(core.replace(/-/g, " "));
+  add(brandName);
+  add(deUmlaut(brandName));
+  const cleaned = brandName
+    .split(/[–—,|:]/)[0]
+    .split(/\s+/)
+    .filter(w => !GENERIC.has(w.toLowerCase().replace(/\.$/,"")))
+    .join(" ").trim();
+  add(cleaned);
+  add(deUmlaut(cleaned));
+  return [...out];
+}
+
 // ─── Quick Check (2 prompts × 2 providers = 4 runs, analyzed by Haiku) ───
 
 const QUICK_PROMPTS = [
@@ -177,7 +203,8 @@ export async function runQuickCheck(
   brandDomain: string,
   vertical: string,
   region: string,
-): Promise<{ runs: QuickRunResult[]; brandMentions: number; topCompetitor: string; topCompetitorMentions: number }> {
+): Promise<{ runs: QuickRunResult[]; brandMentions: number; topCompetitor: string; topCompetitorMentions: number; aliases: string[] }> {
+  const aliases = buildBrandAliases(brandDomain, brandName);
   const providers: ProviderName[] = ["gemini", "perplexity"];
   const activeProviders = providers.filter((p) => {
     if (p === "gemini") return !!process.env.GEMINI_API_KEY;
@@ -220,7 +247,7 @@ export async function runQuickCheck(
         providerResponses.map((r) => ({ id: r.promptId, text: r.text })),
         brandName,
         brandDomain,
-        [], // no aliases for quick check
+        aliases,
       );
     } catch (err) {
       console.error("Quick check batch analysis failed:", err);
@@ -262,7 +289,7 @@ export async function runQuickCheck(
     }
   }
 
-  return { runs, brandMentions, topCompetitor, topCompetitorMentions };
+  return { runs, brandMentions, topCompetitor, topCompetitorMentions, aliases };
 }
 
 // ─── Airtable operations for Check records ───
@@ -583,6 +610,7 @@ export interface FullCheckResult {
   topCompetitor: string;
   topCompetitorMentions: number;
   competitorDetails: { name: string; count: number }[];
+  aliases: string[];
 }
 
 export async function runFullCheck(
@@ -592,6 +620,7 @@ export async function runFullCheck(
   region: string,
   existingRuns?: QuickRunResult[],
 ): Promise<FullCheckResult> {
+  const aliases = buildBrandAliases(brandDomain, brandName);
   const providers: ProviderName[] = ["gemini", "perplexity"];
   const activeProviders = providers.filter((p) => {
     if (p === "gemini") return !!process.env.GEMINI_API_KEY;
@@ -646,7 +675,7 @@ export async function runFullCheck(
         providerResponses,
         brandName,
         brandDomain,
-        [], // no aliases for check
+        aliases,
       );
     } catch (err) {
       console.error("Full check batch analysis failed:", err);
@@ -684,5 +713,6 @@ export async function runFullCheck(
     topCompetitor,
     topCompetitorMentions,
     competitorDetails,
+    aliases,
   };
 }
