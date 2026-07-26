@@ -3,7 +3,8 @@
 // Body: { reportId: string }
 
 import { NextRequest, NextResponse } from "next/server";
-import { fetchBrandName, normalizeVertical, QUICK_PROMPTS, buildPrompt } from "@/lib/geo-check";
+import { fetchBrandName, normalizeVertical, QUICK_PROMPTS, buildPrompt, buildBrandAliases, extractCoreBrand } from "@/lib/geo-check";
+import { analyzeResponseBatch } from "@/lib/geo-audit/analyzer";
 import {
   getReport,
   setReportStatus,
@@ -170,29 +171,6 @@ function isProviderEnabled(name: ProviderName): boolean {
   return false;
 }
 
-// ─── Count brand mentions in text ───
-
-function countMentions(text: string, brandName: string, domain: string): number {
-  const lower = text.toLowerCase();
-  let count = 0;
-  const brandLower = brandName.toLowerCase();
-  const domainLower = domain.toLowerCase();
-
-  // Count occurrences
-  let idx = 0;
-  while ((idx = lower.indexOf(brandLower, idx)) !== -1) {
-    count++;
-    idx += brandLower.length;
-  }
-  idx = 0;
-  while ((idx = lower.indexOf(domainLower, idx)) !== -1) {
-    count++;
-    idx += domainLower.length;
-  }
-
-  return count;
-}
-
 // ─── POST handler ───
 
 export async function POST(req: NextRequest) {
@@ -245,23 +223,16 @@ export async function POST(req: NextRequest) {
     const providerPromises = enabledProviders.map(async (provider) => {
       const callFn = PROVIDERS[provider];
       const results: Array<{ prompt: string; text: string; error?: string }> = [];
-      let mentions = 0;
-      let totalMentionsChecked = 0;
 
       for (const prompt of prompts) {
         const result = await callFn(prompt);
         results.push({ prompt, text: result.text, error: result.error });
-
-        if (!result.error && result.text) {
-          mentions += countMentions(result.text, brandName, report.domain);
-          totalMentionsChecked++;
-        }
       }
 
       const providerStatus = {
         status: results.every((r) => r.error) ? "error" : results.some((r) => r.error) ? "partial" : "ok",
         queriesRun: results.length,
-        mentions,
+        mentions: 0, // updated below after Haiku analysis
         error: results.every((r) => r.error) ? results[0]?.error : undefined,
       };
 
@@ -275,20 +246,55 @@ export async function POST(req: NextRequest) {
 
     // Collect results
     const llmResults: Record<string, any> = {};
-    let totalMentions = 0;
-    let totalQueries = 0;
+    const allResponses: Array<{ id: string; text: string; provider: string }> = [];
     const providerStatuses: Record<string, any> = {};
 
     for (const result of settled) {
       if (result.status === "fulfilled") {
         const { provider, results, providerStatus } = result.value;
         llmResults[provider] = results;
-        totalMentions += providerStatus.mentions;
-        totalQueries += providerStatus.queriesRun;
         providerStatuses[provider] = providerStatus;
+        // Collect all non-error responses for Haiku analysis
+        for (const r of results) {
+          if (!r.error && r.text) {
+            allResponses.push({ id: `${provider}-${r.prompt.slice(0, 30)}`, text: r.text, provider });
+          }
+        }
       } else {
-        // This shouldn't happen since we catch errors inside each provider
         console.error("Provider promise rejected:", result.reason);
+      }
+    }
+
+    // ─── Haiku batch analysis (same as quick mode) ───
+    const aliases = buildBrandAliases(report.domain, brandName);
+    const coreBrand = extractCoreBrand(brandName) || brandName;
+    let totalMentions = 0;
+    let totalQueries = allResponses.length;
+    const allCompetitorCounts: Record<string, number> = {};
+
+    if (allResponses.length > 0) {
+      try {
+        const analyses = await analyzeResponseBatch(
+          allResponses.map((r) => ({ id: r.id, text: r.text })),
+          coreBrand,
+          report.domain,
+          aliases,
+        );
+
+        // Tally mentions and competitors from Haiku analysis
+        for (const resp of allResponses) {
+          const analysis = analyses[resp.id];
+          if (analysis?.brand_mentioned) {
+            totalMentions++;
+            providerStatuses[resp.provider].mentions++;
+          }
+          for (const comp of analysis?.competitors_mentioned || []) {
+            allCompetitorCounts[comp] = (allCompetitorCounts[comp] || 0) + 1;
+          }
+        }
+      } catch (err) {
+        console.error("Haiku batch analysis failed:", err);
+        // Fall back to 0 mentions — Haiku failure is logged, not fatal
       }
     }
 
@@ -343,30 +349,21 @@ export async function POST(req: NextRequest) {
 
     const tEnd = Date.now();
 
-    // ─── Compute top competitor from provider statuses ───
-    // providerStatuses has { gemini: {mentions, queriesRun}, ... }
-    // We need per-provider mention counts to find who mentions the brand most
+    // ─── Compute top competitor from Haiku analysis ───
     let topCompetitor = "";
     let topCompetitorMentions = 0;
-    // The competitor data comes from the LLM results — we count brand mentions
-    // across all provider responses. The top competitor is the non-brand entity
-    // mentioned most frequently across all responses.
-    // For now, we use the mention_rate and providerStatuses to build the summary.
-    // The actual competitor list is extracted by the analyzer (Haiku) in quick mode.
-    // In full mode, we compute it here from providerStatuses.
-
-    // Count mentions per provider for the summary
-    const providerMentions: Record<string, { mentions: number; queries: number }> = {};
-    for (const [prov, status] of Object.entries(providerStatuses)) {
-      providerMentions[prov] = { mentions: status.mentions, queries: status.queriesRun };
+    for (const [name, count] of Object.entries(allCompetitorCounts)) {
+      if (count > topCompetitorMentions) {
+        topCompetitorMentions = count;
+        topCompetitor = name;
+      }
     }
 
     // ─── Build visibility summary ───
     const brandDisplayName = report.brand_name || report.domain;
     const mentionPct = mentionRate !== null ? Math.round(mentionRate * 100) : 0;
-    const providerNames = Object.keys(providerMentions);
-    const activeProviders = providerNames.filter(p => providerMentions[p].queries > 0);
-    const providersWithMentions = activeProviders.filter(p => providerMentions[p].mentions > 0);
+    const activeProviders = Object.keys(providerStatuses).filter(p => providerStatuses[p].queriesRun > 0);
+    const providersWithMentions = activeProviders.filter(p => providerStatuses[p].mentions > 0);
 
     let visibilitySummary: string;
     if (mentionRate === null || totalQueries === 0) {
@@ -404,7 +401,12 @@ export async function POST(req: NextRequest) {
       // mentionRate and queriesTested are GATED — served only via GET /report/[id] after unlock
     });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Unbekannter Fehler";
+    const message = err instanceof Error ? err.message : "Unknown error";
+    // Reset status so the endpoint can be retried (best effort)
+    try {
+      const { reportId } = await req.clone().json().catch(() => ({}));
+      if (reportId) await setReportStatus(reportId, "error");
+    } catch { /* best effort */ }
     return json({ error: message }, { status: 500 });
   }
 }

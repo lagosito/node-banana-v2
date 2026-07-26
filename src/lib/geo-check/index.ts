@@ -141,15 +141,24 @@ export async function fetchBrandName(domain: string): Promise<string> {
     // Try og:title first (most reliable)
     const ogMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i)
       || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i);
-    if (ogMatch?.[1]) return cleanBrandName(ogMatch[1]);
+    if (ogMatch?.[1]) {
+      const cleaned = cleanBrandName(ogMatch[1]);
+      if (cleaned) return cleaned;
+    }
 
     // Try <title> tag
     const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-    if (titleMatch?.[1]) return cleanBrandName(titleMatch[1]);
+    if (titleMatch?.[1]) {
+      const cleaned = cleanBrandName(titleMatch[1]);
+      if (cleaned) return cleaned;
+    }
 
     // Try first <h1>
     const h1Match = html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
-    if (h1Match?.[1]) return cleanBrandName(h1Match[1]);
+    if (h1Match?.[1]) {
+      const cleaned = cleanBrandName(h1Match[1]);
+      if (cleaned) return cleaned;
+    }
   } catch {
     // Fall through to domain-based name
   }
