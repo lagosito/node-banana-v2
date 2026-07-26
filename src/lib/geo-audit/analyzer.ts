@@ -146,7 +146,19 @@ Liefere ein JSON mit "results" Objekt, eine Analyse pro ID.`;
   const data = await res.json();
   const raw = data.choices?.[0]?.message?.content || "{}";
   const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-  const parsed = JSON.parse(cleaned);
+  // Extract first valid JSON object (Haiku sometimes appends trailing text)
+  let parsed: any;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    // Find the last closing brace and try parsing up to there
+    const lastBrace = cleaned.lastIndexOf("}");
+    if (lastBrace > 0) {
+      parsed = JSON.parse(cleaned.slice(0, lastBrace + 1));
+    } else {
+      throw new Error(`Batch analyzer returned invalid JSON: ${cleaned.slice(0, 200)}`);
+    }
+  }
 
   const results: Record<string, AnalysisOutput> = {};
   const rawResults = parsed.results || parsed;
