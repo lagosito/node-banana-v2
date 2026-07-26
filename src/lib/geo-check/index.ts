@@ -164,22 +164,35 @@ const deUmlaut = (s: string) => s
   .replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue").replace(/ß/g,"ss")
   .replace(/Ä/g,"Ae").replace(/Ö/g,"Oe").replace(/Ü/g,"Ue");
 
+/**
+ * Extract the distinctive core of a brand name from a page title.
+ * Cuts at a SPACED separator (" - ", " – ", " — ") or at , | :
+ * so "Weingut Kranz - Ilbesheim im Süden der Pfalz" -> "Kranz",
+ * while an internal hyphen is preserved: "Weingut Dr. Bürklin-Wolf" -> "Bürklin-Wolf".
+ * Returns "" if nothing distinctive remains.
+ */
+export function extractCoreBrand(brandName: string): string {
+  return brandName
+    .split(/\s+[-–—]\s+|[,|:]/)[0]
+    .split(/\s+/)
+    .filter(w => !GENERIC.has(w.toLowerCase().replace(/\.$/,"")))
+    .join(" ")
+    .trim();
+}
+
 export function buildBrandAliases(domain: string, brandName: string): string[] {
   const out = new Set<string>();
   const add = (s: string) => { if (s && s.trim().length > 1) out.add(s.trim()); };
+  // Núcleo distintivo primero: es el ancla más fuerte para el matcher.
+  const cleaned = extractCoreBrand(brandName);
+  add(cleaned);
+  add(deUmlaut(cleaned));
+  add(brandName);
+  add(deUmlaut(brandName));
   add(domain);
   const core = domain.split(".")[0];
   add(core);
   add(core.replace(/-/g, " "));
-  add(brandName);
-  add(deUmlaut(brandName));
-  const cleaned = brandName
-    .split(/[–—,|:]/)[0]
-    .split(/\s+/)
-    .filter(w => !GENERIC.has(w.toLowerCase().replace(/\.$/,"")))
-    .join(" ").trim();
-  add(cleaned);
-  add(deUmlaut(cleaned));
   return [...out];
 }
 
@@ -245,7 +258,7 @@ export async function runQuickCheck(
     try {
       analyses = await analyzeResponseBatch(
         providerResponses.map((r) => ({ id: r.promptId, text: r.text })),
-        brandName,
+        extractCoreBrand(brandName) || brandName,
         brandDomain,
         aliases,
       );
@@ -673,7 +686,7 @@ export async function runFullCheck(
     try {
       analyses = await analyzeResponseBatch(
         providerResponses,
-        brandName,
+        extractCoreBrand(brandName) || brandName,
         brandDomain,
         aliases,
       );
