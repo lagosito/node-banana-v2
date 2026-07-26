@@ -207,8 +207,9 @@ export interface QuickRunResult {
   provider: string;
   prompt: string;
   responseText: string;
-  brandMentioned: boolean;
+  brandMentioned: boolean | null;  // null = "sin dato" (analyzer failed)
   competitorsMentioned: string[];
+  analysisError?: string;          // set when Haiku failed for this run
 }
 
 export async function runQuickCheck(
@@ -216,7 +217,17 @@ export async function runQuickCheck(
   brandDomain: string,
   vertical: string,
   region: string,
-): Promise<{ runs: QuickRunResult[]; brandMentions: number; topCompetitor: string; topCompetitorMentions: number; aliases: string[] }> {
+): Promise<{
+  runs: QuickRunResult[];
+  brandMentions: number | null;    // null = "sin dato"
+  totalRuns: number;
+  providersAttempted: number;
+  providersSucceeded: number;
+  topCompetitor: string;
+  topCompetitorMentions: number;
+  aliases: string[];
+  analysisError?: string;          // propagated from batch analysis failure
+}> {
   const aliases = buildBrandAliases(brandDomain, brandName);
   const providers: ProviderName[] = ["gemini", "perplexity"];
   const activeProviders = providers.filter((p) => {
@@ -254,6 +265,7 @@ export async function runQuickCheck(
 
   // Phase 2: Batch analyze with Claude Haiku (same as audit runner)
   let analyses: Record<string, any> = {};
+  let analysisError: string | undefined;
   if (providerResponses.length > 0) {
     try {
       analyses = await analyzeResponseBatch(
@@ -262,22 +274,31 @@ export async function runQuickCheck(
         brandDomain,
         aliases,
       );
-    } catch (err) {
-      console.error("Quick check batch analysis failed:", err);
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      console.error("Quick check batch analysis FAILED:", msg);
+      analysisError = msg;
     }
   }
 
   // Phase 3: Build results from Haiku analysis (NOT regex)
   const runs: QuickRunResult[] = [];
   const allCompetitorCounts: Record<string, number> = {};
+  const analysisFailed = analysisError !== undefined;
 
   for (const resp of providerResponses) {
-    const analysis = analyses[resp.promptId] || {
-      brand_mentioned: false,
-      competitors_mentioned: [],
-    };
+    const analysis = analyses[resp.promptId];
+    // null = analyzer failed → "sin dato"; false = analyzer ran, no mention
+    const brandMentioned: boolean | null = analysisFailed
+      ? null
+      : analysis
+        ? Boolean(analysis.brand_mentioned)
+        : false;
+    const competitors = analysisFailed
+      ? []
+      : analysis?.competitors_mentioned || [];
 
-    for (const c of analysis.competitors_mentioned) {
+    for (const c of competitors) {
       allCompetitorCounts[c] = (allCompetitorCounts[c] || 0) + 1;
     }
 
@@ -285,13 +306,16 @@ export async function runQuickCheck(
       provider: resp.provider,
       prompt: resp.prompt,
       responseText: resp.text,
-      brandMentioned: analysis.brand_mentioned,
-      competitorsMentioned: analysis.competitors_mentioned,
+      brandMentioned,
+      competitorsMentioned: competitors,
+      ...(analysisFailed ? { analysisError } : {}),
     });
   }
 
   // Calculate results
-  const brandMentions = runs.filter((r) => r.brandMentioned).length;
+  const brandMentions = analysisFailed
+    ? null
+    : runs.filter((r) => r.brandMentioned === true).length;
   let topCompetitor = "";
   let topCompetitorMentions = 0;
 
@@ -302,7 +326,14 @@ export async function runQuickCheck(
     }
   }
 
-  return { runs, brandMentions, topCompetitor, topCompetitorMentions, aliases };
+  const providerSuccessCounts: Record<string, number> = {};
+  for (const resp of providerResponses) {
+    providerSuccessCounts[resp.provider] = (providerSuccessCounts[resp.provider] || 0) + 1;
+  }
+  const providersAttempted = activeProviders.length;
+  const providersSucceeded = Object.keys(providerSuccessCounts).length;
+
+  return { runs, brandMentions, totalRuns: runs.length, providersAttempted, providersSucceeded, topCompetitor, topCompetitorMentions, aliases, analysisError };
 }
 
 // ─── Airtable operations for Check records ───
@@ -618,12 +649,13 @@ const FULL_PROMPTS = [
 
 export interface FullCheckResult {
   brandName: string;
-  brandMentions: number;
+  brandMentions: number | null;    // null = "sin dato" (analyzer failed)
   totalRuns: number;
   topCompetitor: string;
   topCompetitorMentions: number;
   competitorDetails: { name: string; count: number }[];
   aliases: string[];
+  analysisError?: string;
 }
 
 export async function runFullCheck(
@@ -682,6 +714,7 @@ export async function runFullCheck(
 
   // Phase 2: Batch analyze with Claude Haiku (same as audit runner)
   let analyses: Record<string, any> = {};
+  let analysisError: string | undefined;
   if (providerResponses.length > 0) {
     try {
       analyses = await analyzeResponseBatch(
@@ -690,22 +723,31 @@ export async function runFullCheck(
         brandDomain,
         aliases,
       );
-    } catch (err) {
-      console.error("Full check batch analysis failed:", err);
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      console.error("Full check batch analysis FAILED:", msg);
+      analysisError = msg;
     }
   }
 
   // Phase 3: Build results from Haiku analysis
+  const analysisFailed = analysisError !== undefined;
   for (const resp of providerResponses) {
-    const analysis = analyses[resp.id] || {
-      brand_mentioned: false,
-      competitors_mentioned: [],
-    };
+    const analysis = analyses[resp.id];
+    // null = analyzer failed → "sin dato"; false = analyzer ran, no mention
+    const brandMentioned: boolean | null = analysisFailed
+      ? null
+      : analysis
+        ? Boolean(analysis.brand_mentioned)
+        : false;
+    const competitors = analysisFailed
+      ? []
+      : analysis?.competitors_mentioned || [];
 
-    if (analysis.brand_mentioned) totalBrandMentions++;
+    if (brandMentioned === true) totalBrandMentions++;
     totalRuns++;
 
-    for (const c of analysis.competitors_mentioned) {
+    for (const c of competitors) {
       allCompetitorCounts[c] = (allCompetitorCounts[c] || 0) + 1;
     }
   }
@@ -721,11 +763,12 @@ export async function runFullCheck(
 
   return {
     brandName,
-    brandMentions: totalBrandMentions,
+    brandMentions: analysisFailed ? null : totalBrandMentions,
     totalRuns,
     topCompetitor,
     topCompetitorMentions,
     competitorDetails,
     aliases,
+    ...(analysisError ? { analysisError } : {}),
   };
 }

@@ -127,15 +127,15 @@
     "notes": "Cervecería de Neumarkt. CMS custom o middleware sin markers obvios."
   },
   {
-    "domain": "heise.de",
-    "label": "heise",
+    "domain": "oekonomierat-rebholz.com",
+    "label": "oekonomierat-rebholz",
     "cms": "Custom",
-    "vertical": "Tech",
+    "vertical": "Wein",
     "expectedTraits": [
-      "partial_ai_blocks",
-      "specific_groups_with_allow",
-      "malicious_crawler_section"
+      "german_winery",
+      "vdp_member",
+      "content_rich"
     ],
-    "notes": "heise.de: Allow parciales para GPTBot/ClaudeBot/PerplexityBot + Disallow: / en seccion Malicious Crawler."
+    "notes": "Weingut Ökonomierat Rebholz, VDP-Weingut en la Südpfalz. Segunda bodega real del set de control."
   }
 ]

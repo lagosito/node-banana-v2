@@ -71,6 +71,7 @@ export async function POST(req: NextRequest) {
       responseText: r.responseText,
       brandMentioned: r.brandMentioned,
       competitorsMentioned: r.competitorsMentioned,
+      ...(r.analysisError ? { analysisError: r.analysisError } : {}),
     }));
 
     return json({
@@ -78,9 +79,12 @@ export async function POST(req: NextRequest) {
       domain: dns.domain,
       aliases,
       brandMentions: result.brandMentions,
-      totalRuns: result.runs.length,
+      totalRuns: result.totalRuns,
+      providersAttempted: result.providersAttempted,
+      providersSucceeded: result.providersSucceeded,
       topCompetitor: result.topCompetitor,
       topCompetitorMentions: result.topCompetitorMentions,
+      ...(result.analysisError ? { analysisError: result.analysisError } : {}),
       llm_results: debugRuns,
     });
   } catch (err: unknown) {
