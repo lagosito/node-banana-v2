@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
     });
 
     return json(
-      { success: true, message: "Vielen Dank! Wir senden Ihnen die Ergebnisse in Kürze per E-Mail." },
+      { success: true, message: "Thank you! We will send you the results shortly via email." },
       { status: 202 }
     );
   } catch (err: unknown) {

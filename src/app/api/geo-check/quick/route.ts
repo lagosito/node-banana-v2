@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
     const rateLimit = await checkRateLimitDb(ip);
     if (!rateLimit.allowed) {
-      return json({ error: "Zu viele Anfragen. Bitte versuchen Sie es morgen erneut." }, { status: 429 });
+      return json({ error: "Too many requests. Please try again tomorrow." }, { status: 429 });
     }
 
     // Cache: if we already have a report for this domain, return it
