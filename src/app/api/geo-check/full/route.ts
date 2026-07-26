@@ -138,7 +138,7 @@ async function processFullCheck(params: {
     const emailSent = await sendCheckEmail({
       to: email,
       brandName,
-      brandMentions: result.brandMentions,
+      brandMentions: result.brandMentions ?? 0,
       totalRuns: result.totalRuns,
       topCompetitor: result.topCompetitor,
       topCompetitorMentions: result.topCompetitorMentions,
@@ -149,7 +149,7 @@ async function processFullCheck(params: {
       brandName,
       brandDomain,
       email,
-      brandMentions: result.brandMentions,
+      brandMentions: result.brandMentions ?? 0,
       totalRuns: result.totalRuns,
       topCompetitor: result.topCompetitor,
       topCompetitorMentions: result.topCompetitorMentions,
