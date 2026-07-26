@@ -185,7 +185,13 @@ export async function POST(req: NextRequest) {
     return json(buildV2Phase1(report!));
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unbekannter Fehler";
-    return json({ error: message }, { status: 500 });
+    // Expose Supabase URL issues (masked) without leaking secrets
+    const supabaseUrl = process.env.SUPABASE_URL || "";
+    const urlOk = supabaseUrl.startsWith("http://") || supabaseUrl.startsWith("https://");
+    const extra = !urlOk && supabaseUrl
+      ? ` (SUPABASE_URL="${supabaseUrl.slice(0,15)}…" — missing https://?)`
+      : "";
+    return json({ error: message + extra }, { status: 500 });
   }
 }
 

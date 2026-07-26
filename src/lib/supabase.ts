@@ -21,6 +21,9 @@ export function getSupabase(): SupabaseClient {
     if (!url || !key) {
       throw new Error("Supabase not configured: set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY");
     }
+    if (!url.startsWith("http://") && !url.startsWith("https://")) {
+      throw new Error(`SUPABASE_URL must start with http:// or https:// — got: "${url.slice(0, 20)}…"`);
+    }
     _supabase = createClient(url, key);
   }
   return _supabase;
