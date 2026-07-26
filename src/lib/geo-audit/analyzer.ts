@@ -103,10 +103,10 @@ export async function analyzeResponseBatch(
 ): Promise<Record<string, AnalysisOutput>> {
   if (responses.length === 0) return {};
 
-  // Truncate each response to ~2000 chars to fit Haiku context
+  // Truncate each response to ~4000 chars (Haiku 200K context — 4×4000 is safe)
   const truncated = responses.map((r) => ({
     id: r.id,
-    text: r.text.slice(0, 2000),
+    text: r.text.slice(0, 4000),
   }));
 
   const userPrompt = `Analysiere diese ${responses.length} KI-Antworten:
