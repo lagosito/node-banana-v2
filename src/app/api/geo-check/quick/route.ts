@@ -71,6 +71,10 @@ function buildV2Phase1(row: any): Record<string, unknown> {
     subpages: row.subpages || [],
     quickWins: [],
     partialCrawl: row.verified_facts?.partialCrawl ?? false,
+    // Competitor data (from LLM phase)
+    topCompetitor: row.top_competitor || null,
+    topCompetitorMentions: row.top_competitor_mentions || 0,
+    visibilitySummary: row.visibility_summary || null,
     // Phase 2 not done yet
     status: row.status,
     providerStatus: row.provider_status || {},

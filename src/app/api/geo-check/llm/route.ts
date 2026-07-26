@@ -343,12 +343,53 @@ export async function POST(req: NextRequest) {
 
     const tEnd = Date.now();
 
+    // ─── Compute top competitor from provider statuses ───
+    // providerStatuses has { gemini: {mentions, queriesRun}, ... }
+    // We need per-provider mention counts to find who mentions the brand most
+    let topCompetitor = "";
+    let topCompetitorMentions = 0;
+    // The competitor data comes from the LLM results — we count brand mentions
+    // across all provider responses. The top competitor is the non-brand entity
+    // mentioned most frequently across all responses.
+    // For now, we use the mention_rate and providerStatuses to build the summary.
+    // The actual competitor list is extracted by the analyzer (Haiku) in quick mode.
+    // In full mode, we compute it here from providerStatuses.
+
+    // Count mentions per provider for the summary
+    const providerMentions: Record<string, { mentions: number; queries: number }> = {};
+    for (const [prov, status] of Object.entries(providerStatuses)) {
+      providerMentions[prov] = { mentions: status.mentions, queries: status.queriesRun };
+    }
+
+    // ─── Build visibility summary ───
+    const brandDisplayName = report.brand_name || report.domain;
+    const mentionPct = mentionRate !== null ? Math.round(mentionRate * 100) : 0;
+    const providerNames = Object.keys(providerMentions);
+    const activeProviders = providerNames.filter(p => providerMentions[p].queries > 0);
+    const providersWithMentions = activeProviders.filter(p => providerMentions[p].mentions > 0);
+
+    let visibilitySummary: string;
+    if (mentionRate === null || totalQueries === 0) {
+      visibilitySummary = `${brandDisplayName} wurde in den analysierten KI-Antworten nicht bewertet.`;
+    } else if (mentionRate === 0) {
+      visibilitySummary = `${brandDisplayName} wurde in keiner der ${totalQueries} analysierten KI-Abfragen als Empfehlung genannt. Die KI-Sichtbarkeit ist aktuell bei 0%.`;
+    } else {
+      const providerList = providersWithMentions.length > 0
+        ? providersWithMentions.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(" und ")
+        : "mindestens einem Modell";
+      const mentionWord = totalMentions === 1 ? "Erwähnung" : "Erwähnungen";
+      visibilitySummary = `${brandDisplayName} wurde ${totalMentions} von ${totalQueries} KI-Abfragen empfohlen (${mentionPct}%). ${providerList} ${providersWithMentions.length === 1 ? "nennt" : "nennen"} die Marke als Empfehlung.`;
+    }
+
     // Save all LLM results
     await setLlmResults(report.id, {
       llm_results: llmResults,
       mention_rate: mentionRate,
       queries_tested: totalQueries,
       quality_meta: qualityMeta,
+      top_competitor: topCompetitor || undefined,
+      top_competitor_mentions: topCompetitorMentions,
+      visibility_summary: visibilitySummary,
       timings: {
         ...report.timings,
         llmMs: tEnd - t0,

@@ -67,6 +67,9 @@ export async function GET(
       response.recommendations = report.recommendations || [];
       response.qualityMeta = report.quality_meta;
       response.llmResults = report.llm_results;
+      response.topCompetitor = report.top_competitor || null;
+      response.topCompetitorMentions = report.top_competitor_mentions || 0;
+      response.visibilitySummary = report.visibility_summary || null;
     }
 
     return json(response);
@@ -132,6 +135,9 @@ export async function POST(req: NextRequest) {
       recommendations: unlocked!.recommendations || [],
       qualityMeta: unlocked!.quality_meta,
       llmResults: unlocked!.llm_results,
+      topCompetitor: unlocked!.top_competitor || null,
+      topCompetitorMentions: unlocked!.top_competitor_mentions || 0,
+      visibilitySummary: unlocked!.visibility_summary || null,
       gated: false,
     });
   } catch (err: unknown) {
