@@ -1,6 +1,6 @@
 export async function GET() {
-  const supabaseUrl = process.env.SUPABASE_URL || "";
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+  const supabaseUrl = (process.env.SUPABASE_URL || "").trim();
+  const supabaseKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "").trim();
   // Mask URL: show scheme + last 8 chars of host
   const urlMasked = supabaseUrl
     ? `${supabaseUrl.slice(0, 8)}…${supabaseUrl.slice(-12)}`

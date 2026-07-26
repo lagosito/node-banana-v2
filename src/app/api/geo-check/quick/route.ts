@@ -186,7 +186,7 @@ export async function POST(req: NextRequest) {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unbekannter Fehler";
     // Expose Supabase URL issues (masked) without leaking secrets
-    const supabaseUrl = process.env.SUPABASE_URL || "";
+    const supabaseUrl = (process.env.SUPABASE_URL || "").trim();
     const urlOk = supabaseUrl.startsWith("http://") || supabaseUrl.startsWith("https://");
     const extra = !urlOk && supabaseUrl
       ? ` (SUPABASE_URL="${supabaseUrl.slice(0,15)}…" — missing https://?)`
