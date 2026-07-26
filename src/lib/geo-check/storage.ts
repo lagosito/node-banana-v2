@@ -76,33 +76,40 @@ export async function createReport(data: {
   const sb = supabase();
   if (!sb) throw new Error("Supabase not configured");
 
-  const { data: row, error } = await sb
-    .from("geo_check_reports")
-    .insert({
-      short_slug: generateShortSlug(crypto.randomUUID()),
-      domain: data.domain,
-      url: data.url,
-      resolved_url: data.resolvedUrl ?? null,
-      lang: data.lang ?? null,
-      overall_score: data.overallScore,
-      category_scores: data.categoryScores,
-      citability: data.citability,
-      findings: data.findings,
-      top_problems: data.topProblems,
-      verified_facts: data.verifiedFacts,
-      status: "pending",
-      provider_status: {},
-      brand_name: data.brandName ?? null,
-      vertical: data.vertical ?? null,
-      region: data.region ?? null,
-      subpages: data.subpages ?? [],
-      ai_crawler_facts: data.aiCrawlerFacts ?? null,
-      timings: data.timings ?? null,
-    })
-    .select("id, short_slug")
-    .single();
+  let row: any, error: any;
+  try {
+    const result = await sb
+      .from("geo_check_reports")
+      .insert({
+        short_slug: generateShortSlug(crypto.randomUUID()),
+        domain: data.domain,
+        url: data.url,
+        resolved_url: data.resolvedUrl ?? null,
+        lang: data.lang ?? null,
+        overall_score: data.overallScore,
+        category_scores: data.categoryScores,
+        citability: data.citability,
+        findings: data.findings,
+        top_problems: data.topProblems,
+        verified_facts: data.verifiedFacts,
+        status: "pending",
+        provider_status: {},
+        brand_name: data.brandName ?? null,
+        vertical: data.vertical ?? null,
+        region: data.region ?? null,
+        subpages: data.subpages ?? [],
+        ai_crawler_facts: data.aiCrawlerFacts ?? null,
+        timings: data.timings ?? null,
+      })
+      .select("id, short_slug")
+      .single();
+    row = result.data;
+    error = result.error;
+  } catch (fetchErr: any) {
+    throw new Error(`createReport fetch failed: ${fetchErr?.message || fetchErr} (cause: ${fetchErr?.cause?.message || "none"})`);
+  }
 
-  if (error) throw new Error(`createReport: ${error.message}`);
+  if (error) throw new Error(`createReport: ${error.message} (code=${error.code}, details=${error.details || "none"})`);
   return { id: row.id, shortSlug: row.short_slug };
 }
 
