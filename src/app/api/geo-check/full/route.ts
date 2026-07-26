@@ -13,6 +13,7 @@ import {
   sendCheckEmail,
   sendSlackPing,
   isValidVertical,
+  VALID_VERTICALS,
 } from "@/lib/geo-check";
 
 const CORS_HEADERS: Record<string, string> = {
@@ -38,22 +39,22 @@ export async function POST(req: NextRequest) {
 
     // ─── Honeypot check ───
     if (_hp) {
-      return json({ success: true, message: "Vielen Dank! Wir melden uns in Kürze." });
+      return json({ success: true, message: "Thank you! We will get back to you shortly." });
     }
 
     // ─── Validation ───
     if (!website_url || !vertical || !region || !email) {
-      return json({ error: "website_url, vertical, region und email sind erforderlich" }, { status: 400 });
+      return json({ error: "website_url, vertical, region, and email are required" }, { status: 400 });
     }
 
     // Vertical validation
     if (!isValidVertical(vertical)) {
-      return json({ error: `Ungültiger Vertical. Gültig: Wein, Feinkost, Craft Beer, Fitness, Gastro` }, { status: 400 });
+      return json({ error: `Invalid vertical. Valid: ${VALID_VERTICALS.join(", ")}` }, { status: 400 });
     }
 
     // Email validation
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return json({ error: "Ungültige E-Mail-Adresse" }, { status: 400 });
+      return json({ error: "Invalid email address" }, { status: 400 });
     }
 
     // DNS validation

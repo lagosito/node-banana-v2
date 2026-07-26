@@ -7,6 +7,8 @@ import {
   validateDomain,
   fetchBrandName,
   isValidVertical,
+  normalizeVertical,
+  VALID_VERTICALS,
 } from "@/lib/geo-check";
 import { collectFacts } from "@/lib/geo-check/crawler";
 import { scoreReport } from "@/lib/geo-check/scoring";
@@ -93,11 +95,11 @@ export async function POST(req: NextRequest) {
     if (_hp) return json({ ok: true });
 
     if (!website_url) {
-      return json({ error: "website_url ist erforderlich" }, { status: 400 });
+      return json({ error: "website_url is required" }, { status: 400 });
     }
 
     if (vertical && !isValidVertical(vertical)) {
-      return json({ error: `Ungueltiger Vertical. Gueltig: Wein, Feinkost, Craft Beer, Fitness, Gastro` }, { status: 400 });
+      return json({ error: `Invalid vertical. Valid: ${VALID_VERTICALS.join(", ")}` }, { status: 400 });
     }
 
     const dns = await validateDomain(website_url);
@@ -203,12 +205,12 @@ export async function GET(req: NextRequest) {
     const reportId = searchParams.get("id");
 
     if (!reportId) {
-      return json({ error: "Report-ID ist erforderlich" }, { status: 400 });
+      return json({ error: "Report ID is required" }, { status: 400 });
     }
 
     const report = await getReport(reportId);
     if (!report) {
-      return json({ error: "Report nicht gefunden oder abgelaufen" }, { status: 404 });
+      return json({ error: "Report not found or expired" }, { status: 404 });
     }
 
     return json(buildV2Phase1(report));

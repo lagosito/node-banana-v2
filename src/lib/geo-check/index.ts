@@ -15,14 +15,25 @@ const T = {
   RUNS: "tblqvbIlCWnrBR7fk",
 };
 
-// ─── Valid verticals (from Prompt Library) ───
-
-export const VALID_VERTICALS = ["Wein", "Feinkost", "Craft Beer", "Fitness", "Gastro"] as const;
-export type ValidVertical = (typeof VALID_VERTICALS)[number];
-
-export function isValidVertical(vertical: string): vertical is ValidVertical {
-  return VALID_VERTICALS.includes(vertical as ValidVertical);
-}
+// ─── Shared config (single source of truth) ───
+import {
+  VALID_VERTICALS,
+  type ValidVertical,
+  isValidVertical,
+  normalizeVertical,
+  QUICK_PROMPTS,
+  FULL_PROMPTS,
+  buildPrompt,
+} from "./config";
+export {
+  VALID_VERTICALS,
+  type ValidVertical,
+  isValidVertical,
+  normalizeVertical,
+  QUICK_PROMPTS,
+  FULL_PROMPTS,
+  buildPrompt,
+};
 
 // ─── DNS Validation ───
 
@@ -32,7 +43,7 @@ export async function validateDomain(url: string): Promise<{ valid: boolean; dom
     const u = new URL(url.startsWith("http") ? url : `https://${url}`);
     domain = u.hostname.replace(/^www\./, "");
   } catch {
-    return { valid: false, domain: "", error: "Ungültige URL" };
+    return { valid: false, domain: "", error: "Invalid URL" };
   }
 
   try {
@@ -47,7 +58,7 @@ export async function validateDomain(url: string): Promise<{ valid: boolean; dom
     clearTimeout(timeout);
     return { valid: true, domain };
   } catch {
-    return { valid: false, domain, error: "Domain nicht erreichbar" };
+    return { valid: false, domain, error: "Domain unreachable" };
   }
 }
 
@@ -198,10 +209,7 @@ export function buildBrandAliases(domain: string, brandName: string): string[] {
 
 // ─── Quick Check (2 prompts × 2 providers = 4 runs, analyzed by Haiku) ───
 
-const QUICK_PROMPTS = [
-  "Welche {vertical} in {region} können Sie empfehlen?",
-  "Was sind die besten {vertical} in {region}?",
-];
+// QUICK_PROMPTS imported from ./config
 
 export interface QuickRunResult {
   provider: string;
@@ -641,11 +649,7 @@ function buildEmailHtml(params: {
 
 // ─── Full Check (3 prompts × 2 providers, reuses quick runs) ───
 
-const FULL_PROMPTS = [
-  "Welche {vertical} in {region} können Sie empfehlen?",
-  "Was sind die besten {vertical} in {region}?",
-  "Welche {vertical} in {region} sind besonders beliebt?",
-];
+// FULL_PROMPTS imported from ./config
 
 export interface FullCheckResult {
   brandName: string;

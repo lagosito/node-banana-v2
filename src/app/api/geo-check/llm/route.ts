@@ -3,7 +3,7 @@
 // Body: { reportId: string }
 
 import { NextRequest, NextResponse } from "next/server";
-import { fetchBrandName } from "@/lib/geo-check";
+import { fetchBrandName, normalizeVertical, QUICK_PROMPTS, buildPrompt } from "@/lib/geo-check";
 import {
   getReport,
   setReportStatus,
@@ -200,17 +200,17 @@ export async function POST(req: NextRequest) {
     const { reportId } = await req.json();
 
     if (!reportId) {
-      return json({ error: "reportId ist erforderlich" }, { status: 400 });
+      return json({ error: "reportId is required" }, { status: 400 });
     }
 
     const report = await getReport(reportId);
     if (!report) {
-      return json({ error: "Report nicht gefunden" }, { status: 404 });
+      return json({ error: "Report not found" }, { status: 404 });
     }
 
     // Prevent double-run
     if (report.status === "running") {
-      return json({ error: "LLM-Phase laeuft bereits" }, { status: 409 });
+      return json({ error: "LLM phase already running" }, { status: 409 });
     }
     if (report.status === "completed") {
       return json({ error: "LLM-Phase bereits abgeschlossen" }, { status: 409 });
@@ -220,14 +220,11 @@ export async function POST(req: NextRequest) {
     await setReportStatus(report.id, "running");
 
     const brandName = report.brand_name || await fetchBrandName(report.domain);
-    const vertical = report.vertical || "Unternehmen";
+    const vertical = normalizeVertical(report.vertical || "Other");
     const region = report.region || "Deutschland";
 
     // Build prompts (from Prompt Library logic — vertical-aware)
-    const prompts = [
-      `Welche ${vertical} in ${region} koennen Sie empfehlen?`,
-      `Was sind die besten ${vertical} in ${region}?`,
-    ];
+    const prompts = QUICK_PROMPTS.map((t) => buildPrompt(t, vertical, region));
 
     // Run all enabled providers in parallel (Promise.allSettled)
     const enabledProviders = (["gemini", "openai", "perplexity"] as ProviderName[]).filter(isProviderEnabled);

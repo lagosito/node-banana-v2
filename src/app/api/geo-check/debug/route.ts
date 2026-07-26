@@ -10,6 +10,7 @@ import {
   runQuickCheck,
   buildBrandAliases,
   isValidVertical,
+  VALID_VERTICALS,
 } from "@/lib/geo-check";
 
 const CORS_HEADERS: Record<string, string> = {
@@ -41,11 +42,11 @@ export async function POST(req: NextRequest) {
     const { website_url, vertical, region } = body;
 
     if (!website_url) {
-      return json({ error: "website_url erforderlich" }, { status: 400 });
+      return json({ error: "website_url is required" }, { status: 400 });
     }
 
     if (vertical && !isValidVertical(vertical)) {
-      return json({ error: `Ungültiger Vertical. Gültig: Wein, Feinkost, Craft Beer, Fitness, Gastro` }, { status: 400 });
+      return json({ error: `Invalid vertical. Valid: ${VALID_VERTICALS.join(", ")}` }, { status: 400 });
     }
 
     const dns = await validateDomain(website_url);

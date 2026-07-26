@@ -35,7 +35,7 @@ export async function GET(
     const report = await getReport(id);
 
     if (!report) {
-      return json({ error: "Report nicht gefunden" }, { status: 404 });
+      return json({ error: "Report not found" }, { status: 404 });
     }
 
     // Extend TTL on access
@@ -83,20 +83,20 @@ export async function POST(req: NextRequest) {
     const { reportId, vorname, nachname, email, dsgvo } = await req.json();
 
     if (!reportId || !vorname || !nachname || !email) {
-      return json({ error: "Alle Felder sind erforderlich" }, { status: 400 });
+      return json({ error: "All fields are required" }, { status: 400 });
     }
 
     if (!isValidEmail(email)) {
-      return json({ error: "Ungueltige E-Mail-Adresse" }, { status: 400 });
+      return json({ error: "Invalid email address" }, { status: 400 });
     }
 
     if (dsgvo !== true) {
-      return json({ error: "DSGVO-Einwilligung ist erforderlich" }, { status: 400 });
+      return json({ error: "Privacy consent is required" }, { status: 400 });
     }
 
     const report = await getReport(reportId);
     if (!report) {
-      return json({ error: "Report nicht gefunden" }, { status: 404 });
+      return json({ error: "Report not found" }, { status: 404 });
     }
 
     if (report.unlocked) {
