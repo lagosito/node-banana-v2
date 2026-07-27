@@ -27,9 +27,13 @@ export interface ReportRow {
   // Phase 2b: review
   quality_meta: any;
   recommendations: any;
+  analysis_details: any;
+  composite_score: number | null;
+  composite_breakdown: any;
   // Competitor + visibility summary
   top_competitor: string | null;
   top_competitor_mentions: number;
+  top_competitors: { name: string; count: number }[] | null;
   visibility_summary: string | null;
   // Metadata
   brand_name: string | null;
@@ -166,7 +170,11 @@ export async function setLlmResults(
     timings?: any;
     top_competitor?: string;
     top_competitor_mentions?: number;
+    top_competitors?: { name: string; count: number }[];
     visibility_summary?: string;
+    analysis_details?: any;
+    composite_score?: number;
+    composite_breakdown?: any;
   },
 ): Promise<void> {
   const sb = supabase();
@@ -183,7 +191,11 @@ export async function setLlmResults(
       timings: data.timings ?? null,
       top_competitor: data.top_competitor ?? null,
       top_competitor_mentions: data.top_competitor_mentions ?? 0,
+      top_competitors: data.top_competitors ?? null,
       visibility_summary: data.visibility_summary ?? null,
+      analysis_details: data.analysis_details ?? null,
+      composite_score: data.composite_score ?? null,
+      composite_breakdown: data.composite_breakdown ?? null,
       status: "completed",
     })
     .eq("id", id);

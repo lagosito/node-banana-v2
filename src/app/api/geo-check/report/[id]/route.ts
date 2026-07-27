@@ -41,9 +41,7 @@ export async function GET(
     // Extend TTL on access
     await touchReport(report.id);
 
-    const isUnlocked = report.unlocked;
-
-    // Safe response: always included
+    // All data returned always (gate removed)
     const response: Record<string, unknown> = {
       reportId: report.id,
       shortSlug: report.short_slug,
@@ -57,20 +55,24 @@ export async function GET(
       status: report.status,
       providerStatus: report.provider_status || {},
       createdAt: report.created_at,
-      gated: !isUnlocked,
+      // LLM phase data (always included)
+      mentionRate: report.mention_rate,
+      queriesTested: report.queries_tested,
+      recommendations: report.recommendations || [],
+      qualityMeta: report.quality_meta,
+      llmResults: report.llm_results,
+      topCompetitor: report.top_competitor || null,
+      topCompetitorMentions: report.top_competitor_mentions || 0,
+      topCompetitors: report.top_competitors || [],
+      visibilitySummary: report.visibility_summary || null,
+      // New v2 fields
+      compositeScore: report.composite_score ?? null,
+      compositeBreakdown: report.composite_breakdown || null,
+      analysisDetails: report.analysis_details || null,
+      // Gate status (informational only)
+      gated: false,
+      emailCollected: report.unlocked,
     };
-
-    // Gated content: only when unlocked
-    if (isUnlocked) {
-      response.mentionRate = report.mention_rate;
-      response.queriesTested = report.queries_tested;
-      response.recommendations = report.recommendations || [];
-      response.qualityMeta = report.quality_meta;
-      response.llmResults = report.llm_results;
-      response.topCompetitor = report.top_competitor || null;
-      response.topCompetitorMentions = report.top_competitor_mentions || 0;
-      response.visibilitySummary = report.visibility_summary || null;
-    }
 
     return json(response);
   } catch (err: unknown) {
@@ -137,8 +139,13 @@ export async function POST(req: NextRequest) {
       llmResults: unlocked!.llm_results,
       topCompetitor: unlocked!.top_competitor || null,
       topCompetitorMentions: unlocked!.top_competitor_mentions || 0,
+      topCompetitors: unlocked!.top_competitors || [],
       visibilitySummary: unlocked!.visibility_summary || null,
+      compositeScore: unlocked!.composite_score ?? null,
+      compositeBreakdown: unlocked!.composite_breakdown || null,
+      analysisDetails: unlocked!.analysis_details || null,
       gated: false,
+      emailCollected: true,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unbekannter Fehler";

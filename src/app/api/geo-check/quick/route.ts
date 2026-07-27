@@ -9,6 +9,8 @@ import {
   isValidVertical,
   normalizeVertical,
   VALID_VERTICALS,
+  fetchPageTitle,
+  resolveVertical,
 } from "@/lib/geo-check";
 import { collectFacts } from "@/lib/geo-check/crawler";
 import { scoreReport } from "@/lib/geo-check/scoring";
@@ -137,6 +139,15 @@ export async function POST(req: NextRequest) {
 
     const brandName = await fetchBrandName(dns.domain);
 
+    // When vertical is "Other", infer from page title
+    let effectiveVertical = vertical || "Other";
+    if (effectiveVertical === "Other") {
+      const rawTitle = await fetchPageTitle(dns.domain);
+      if (rawTitle) {
+        effectiveVertical = resolveVertical("Other", rawTitle);
+      }
+    }
+
     // Build topProblems from failing checks
     const topProblems: Array<{ title: string; impact: string }> = [];
     for (const cat of Object.values(scores.categoryScores)) {
@@ -174,7 +185,7 @@ export async function POST(req: NextRequest) {
       topProblems,
       verifiedFacts: facts,
       brandName,
-      vertical,
+      vertical: effectiveVertical,
       region,
       subpages: facts.scannedUrls,
       aiCrawlerFacts: facts.crawlers,

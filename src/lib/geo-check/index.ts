@@ -24,6 +24,8 @@ import {
   QUICK_PROMPTS,
   FULL_PROMPTS,
   buildPrompt,
+  resolveVertical,
+  inferVerticalFromTitle,
 } from "./config";
 export {
   VALID_VERTICALS,
@@ -33,7 +35,11 @@ export {
   QUICK_PROMPTS,
   FULL_PROMPTS,
   buildPrompt,
+  resolveVertical,
+  inferVerticalFromTitle,
 };
+
+// Re-export fetchPageTitle (defined below, exported here for external consumers)
 
 // ─── DNS Validation ───
 
@@ -122,6 +128,29 @@ export function extractBrandFromDomain(domain: string): string {
 }
 
 /**
+ * Fetch just the page title (raw, before cleaning) for vertical inference.
+ */
+export async function fetchPageTitle(domain: string): Promise<string> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(`https://${domain}`, {
+      signal: controller.signal,
+      redirect: "follow",
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; GEO-Check/1.0)" },
+    });
+    clearTimeout(timeout);
+    const html = await res.text();
+    const ogMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i)
+      || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i);
+    if (ogMatch?.[1]) return ogMatch[1].trim();
+    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+    if (titleMatch?.[1]) return titleMatch[1].trim();
+  } catch {}
+  return "";
+}
+
+/**
  * Fetch the real brand name from the website's <title> or og:title.
  * Falls back to extractBrandFromDomain if fetch fails.
  */
@@ -186,25 +215,56 @@ const deUmlaut = (s: string) => s
 
 /**
  * Extract the distinctive core of a brand name from a page title.
- * Cuts at a SPACED separator (" - ", " – ", " — ") or at , | :
- * so "Weingut Kranz - Ilbesheim im Süden der Pfalz" -> "Kranz",
- * while an internal hyphen is preserved: "Weingut Dr. Bürklin-Wolf" -> "Bürklin-Wolf".
- * Returns "" if nothing distinctive remains.
+ * Cuts at a SPACED separator or at , | :
+ * Prefers segment matching the domain, then falls back to shortest segment.
  */
-export function extractCoreBrand(brandName: string): string {
-  return brandName
-    .split(/\s+[-–—]\s+|[,|:]/)[0]
-    .split(/\s+/)
-    .filter(w => !GENERIC.has(w.toLowerCase().replace(/\.$/,"")))
-    .join(" ")
-    .trim();
+export function extractCoreBrand(brandName: string, domain?: string): string {
+  const segments = brandName.split(/\s+[-–—]\s+|[,|:]/);
+  if (segments.length <= 1) {
+    return brandName
+      .split(/\s+/)
+      .filter(w => !GENERIC.has(w.toLowerCase().replace(/\.$/, "")))
+      .join(" ")
+      .trim();
+  }
+
+  const domainBase = domain?.split(".")[0]?.toLowerCase().replace(/-/g, "") || "";
+
+  // Prefer segment whose words appear in the domain
+  if (domainBase) {
+    for (const seg of segments) {
+      const segWords = seg.trim().split(/\s+/).map(w => w.toLowerCase().replace(/\.$/, ""));
+      if (segWords.some(w => domainBase.includes(w) || (w.length >= 4 && w.includes(domainBase.slice(0, 4))))) {
+        const cleaned = seg.trim()
+          .split(/\s+/)
+          .filter(w => !GENERIC.has(w.toLowerCase().replace(/\.$/, "")))
+          .join(" ")
+          .trim();
+        if (cleaned) return cleaned;
+      }
+    }
+  }
+
+  // Fallback: shortest segment (descriptions tend to be longer)
+  const cleaned = segments
+    .map(s => ({
+      cleaned: s.trim()
+        .split(/\s+/)
+        .filter(w => !GENERIC.has(w.toLowerCase().replace(/\.$/, "")))
+        .join(" ")
+        .trim(),
+    }))
+    .filter(s => s.cleaned.length > 0)
+    .sort((a, b) => a.cleaned.length - b.cleaned.length);
+
+  return cleaned[0]?.cleaned || "";
 }
 
 export function buildBrandAliases(domain: string, brandName: string): string[] {
   const out = new Set<string>();
   const add = (s: string) => { if (s && s.trim().length > 1) out.add(s.trim()); };
   // Núcleo distintivo primero: es el ancla más fuerte para el matcher.
-  const cleaned = extractCoreBrand(brandName);
+  const cleaned = extractCoreBrand(brandName, domain);
   add(cleaned);
   add(deUmlaut(cleaned));
   add(brandName);

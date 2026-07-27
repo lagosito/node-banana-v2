@@ -58,6 +58,10 @@ export function isValidVertical(vertical: string): boolean {
 export const QUICK_PROMPTS = [
   "Which {vertical} in {region} would you recommend?",
   "What are the best {vertical} in {region}?",
+  "Which {vertical} in {region} are particularly popular?",
+  "What are top-rated {vertical} options in {region}?",
+  "Can you suggest reliable {vertical} in {region}?",
+  "Which {vertical} in {region} have the best reputation?",
 ];
 
 export const FULL_PROMPTS = [
@@ -68,4 +72,42 @@ export const FULL_PROMPTS = [
 
 export function buildPrompt(template: string, vertical: string, region: string): string {
   return template.replace(/{vertical}/g, vertical).replace(/{region}/g, region);
+}
+
+// ─── Vertical inference for "Other" ───
+
+const VERTICAL_KEYWORDS: [string, ValidVertical][] = [
+  ["wein", "Wine"], ["wine", "Wine"], ["weingut", "Wine"], ["keller", "Wine"],
+  ["feinkost", "Gourmet Food"], ["gourmet", "Gourmet Food"], ["delikatessen", "Gourmet Food"],
+  ["brau", "Craft Beer"], ["bier", "Craft Beer"], ["beer", "Craft Beer"],
+  ["fitness", "Fitness"], ["gym", "Fitness"], ["training", "Fitness"], ["crossfit", "Fitness"],
+  ["restaurant", "Restaurants"], ["gastro", "Restaurants"], ["cuisine", "Restaurants"], ["pizzeria", "Restaurants"],
+  ["beauty", "Beauty & Wellness"], ["wellness", "Beauty & Wellness"], ["spa", "Beauty & Wellness"], ["kosmetik", "Beauty & Wellness"],
+  ["anwalt", "Legal"], ["kanzlei", "Legal"], ["law", "Legal"], ["recht", "Legal"],
+  ["bank", "Finance"], ["finanz", "Finance"], ["versicherung", "Finance"], ["finance", "Finance"],
+  ["arzt", "Healthcare"], ["klinik", "Healthcare"], ["medical", "Healthcare"], ["praxis", "Healthcare"],
+  ["immobilien", "Real Estate"], ["makler", "Real Estate"], ["property", "Real Estate"],
+  ["reinigung", "Home Services"], ["handwerk", "Home Services"], ["dienstleistung", "Home Services"],
+  ["software", "AI & SaaS"], ["saas", "AI & SaaS"],
+];
+
+/**
+ * Infer a real vertical from page title when user selected "Other".
+ */
+export function inferVerticalFromTitle(title: string): ValidVertical {
+  const lower = title.toLowerCase();
+  for (const [keyword, vertical] of VERTICAL_KEYWORDS) {
+    if (lower.includes(keyword)) return vertical;
+  }
+  return "Other";
+}
+
+/**
+ * Resolve vertical: if "Other", infer from title. Otherwise return as-is.
+ */
+export function resolveVertical(vertical: string, title?: string): ValidVertical {
+  if (vertical === "Other" && title) {
+    return inferVerticalFromTitle(title);
+  }
+  return normalizeVertical(vertical);
 }

@@ -3,7 +3,7 @@
 // Body: { reportId: string }
 
 import { NextRequest, NextResponse } from "next/server";
-import { fetchBrandName, normalizeVertical, QUICK_PROMPTS, buildPrompt, buildBrandAliases, extractCoreBrand } from "@/lib/geo-check";
+import { fetchBrandName, normalizeVertical, QUICK_PROMPTS, buildPrompt, buildBrandAliases, extractCoreBrand, resolveVertical, fetchPageTitle } from "@/lib/geo-check";
 import { analyzeResponseBatch } from "@/lib/geo-audit/analyzer";
 import {
   getReport,
@@ -198,7 +198,8 @@ export async function POST(req: NextRequest) {
     await setReportStatus(report.id, "running");
 
     const brandName = report.brand_name || await fetchBrandName(report.domain);
-    const vertical = normalizeVertical(report.vertical || "Other");
+    const rawTitle = await fetchPageTitle(report.domain);
+    const vertical = resolveVertical(report.vertical || "Other", rawTitle);
     const region = report.region || "Deutschland";
 
     // Build prompts (from Prompt Library logic — vertical-aware)
@@ -271,10 +272,12 @@ export async function POST(req: NextRequest) {
     let totalMentions = 0;
     let totalQueries = allResponses.length;
     const allCompetitorCounts: Record<string, number> = {};
+    const allAnalysisDetails: Record<string, any> = {};
+    let analyses: Record<string, any> = {};
 
     if (allResponses.length > 0) {
       try {
-        const analyses = await analyzeResponseBatch(
+        analyses = await analyzeResponseBatch(
           allResponses.map((r) => ({ id: r.id, text: r.text })),
           coreBrand,
           report.domain,
@@ -291,6 +294,13 @@ export async function POST(req: NextRequest) {
           for (const comp of analysis?.competitors_mentioned || []) {
             allCompetitorCounts[comp] = (allCompetitorCounts[comp] || 0) + 1;
           }
+          // Persist full analysis details
+          allAnalysisDetails[resp.id] = {
+            mention_position: analysis?.mention_position || 0,
+            sentiment: analysis?.sentiment || "n/a",
+            brand_domain_cited: analysis?.brand_domain_cited || false,
+            cited_domains: analysis?.cited_domains || [],
+          };
         }
       } catch (err) {
         console.error("Haiku batch analysis failed:", err);
@@ -298,7 +308,102 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // ─── Compute top competitor + top 5 ranking from Haiku analysis ───
+    let topCompetitor = "";
+    let topCompetitorMentions = 0;
+    const topCompetitors = Object.entries(allCompetitorCounts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+    if (topCompetitors.length > 0) {
+      topCompetitor = topCompetitors[0].name;
+      topCompetitorMentions = topCompetitors[0].count;
+    }
+
     const mentionRate = totalQueries > 0 ? totalMentions / totalQueries : null;
+
+    // ─── Composite Score (GEO-Check v1) ───
+    const totalCompetitorMentions = Object.values(allCompetitorCounts).reduce((a, b) => a + b, 0);
+    const brandMentionCount = totalMentions;
+
+    // Mention Rate: % of queries mentioning brand (0-100)
+    const mentionRateScore = mentionRate !== null ? mentionRate * 100 : 0;
+
+    // Position: average position of brand mentions, normalized
+    let avgPosition = 0;
+    let positionCount = 0;
+    for (const resp of allResponses) {
+      const analysis = analyses[resp.id];
+      if (analysis?.brand_mentioned && analysis.mention_position > 0) {
+        avgPosition += analysis.mention_position;
+        positionCount++;
+      }
+    }
+    const avgPos = positionCount > 0 ? avgPosition / positionCount : 0;
+    const positionScore = avgPos === 0 ? 0
+      : avgPos <= 1 ? 100
+      : avgPos <= 2 ? 70
+      : avgPos <= 3 ? 50
+      : 30;
+
+    // Sentiment: (positives + 0.5 * neutrals) / totalMentions
+    let positives = 0, neutrals = 0;
+    for (const resp of allResponses) {
+      const analysis = analyses[resp.id];
+      if (analysis?.brand_mentioned) {
+        if (analysis.sentiment === "positiv") positives++;
+        else if (analysis.sentiment === "neutral") neutrals++;
+      }
+    }
+    const sentimentScore = brandMentionCount > 0
+      ? ((positives + 0.5 * neutrals) / brandMentionCount) * 100
+      : 0;
+
+    // Share of Voice: brand mentions / (brand + competitor mentions)
+    const sovScore = (brandMentionCount + totalCompetitorMentions) > 0
+      ? (brandMentionCount / (brandMentionCount + totalCompetitorMentions)) * 100
+      : 0;
+
+    // Citation Rate: NOT calculated yet (cited-domains feature pending)
+    // Composite: Mention 50% + Position 25% + Sentiment 12.5% + SoV 12.5%
+    const compositeScore = Math.round(
+      mentionRateScore * 0.50
+      + positionScore * 0.25
+      + sentimentScore * 0.125
+      + sovScore * 0.125
+    );
+
+    const compositeBreakdown = [
+      { component: "Erwaehnungsrate", raw: `${Math.round(mentionRateScore)}%`, weight: "50%", points: `${Math.round(mentionRateScore * 0.50)}` },
+      { component: "Position", raw: avgPos > 0 ? `Platz ${avgPos.toFixed(1)}` : "n/a", weight: "25%", points: `${Math.round(positionScore * 0.25)}` },
+      { component: "Sentiment", raw: `${Math.round(sentimentScore)}%`, weight: "12.5%", points: `${Math.round(sentimentScore * 0.125)}` },
+      { component: "Share of Voice", raw: `${Math.round(sovScore)}%`, weight: "12.5%", points: `${Math.round(sovScore * 0.125)}` },
+    ];
+
+    // ─── Recommendations (deterministic from data) ───
+    const recommendations: string[] = [];
+
+    if (mentionRate !== null && mentionRate < 0.3) {
+      recommendations.push("Ihre Marke wird in weniger als 30% der KI-Antworten erwaehnt. Erstellen Sie ein llms.txt auf Ihrer Website und implementieren Sie strukturierte Daten (Schema.org), damit KI-Systeme Ihre Marke leichter finden.");
+    }
+    if (mentionRate !== null && mentionRate >= 0.3 && mentionRate < 0.7) {
+      recommendations.push("Ihre Marke ist teilweise sichtbar. Optimieren Sie Ihre FAQ-Seiten mit direkten Antworten (BLUF-Stil) und sichern Sie Eintraege in den Verzeichnissen, die Ihre Konkurrenten zitiert bekommen.");
+    }
+    if (mentionRate !== null && mentionRate >= 0.7) {
+      recommendations.push("Ihre Sichtbarkeit ist bereits stark. Schuetzen Sie diese Position durch regelmässige Aktualisierung Ihrer Inhalte und ueberwachen Sie die KI-Empfehlungen.");
+    }
+    if (avgPos > 2) {
+      recommendations.push("Wenn Ihre Marke erwaehnt wird, erscheint sie durchschnittlich an Position " + avgPos.toFixed(1) + ". Verbessern Sie Ihre Nennung in Verzeichnissen und Presseportalen.");
+    }
+    if (topCompetitor && topCompetitorMentions > brandMentionCount) {
+      recommendations.push(`Ihr Wettbewerber "${topCompetitor}" wird haeufiger erwaehnt (${topCompetitorMentions} vs. ${brandMentionCount} mal). Analysieren Sie, welche Quellen ${topCompetitor} zitieren.`);
+    }
+    if (sentimentScore < 50 && brandMentionCount > 0) {
+      recommendations.push("Das Sentiment Ihrer Marke in KI-Antworten ist ueberwiegend neutral. Erzeugen Sie positive Signale durch Kundenbewertungen und Fallstudien auf Ihrer Website.");
+    }
+    if (recommendations.length === 0) {
+      recommendations.push("Fuehren Sie ein vollstaendiges GEO-Audit durch, um detaillierte Handlungsempfehlungen zu erhalten.");
+    }
 
     // Update AI visibility score
     const categoryScores = { ...report.category_scores };
@@ -349,16 +454,6 @@ export async function POST(req: NextRequest) {
 
     const tEnd = Date.now();
 
-    // ─── Compute top competitor from Haiku analysis ───
-    let topCompetitor = "";
-    let topCompetitorMentions = 0;
-    for (const [name, count] of Object.entries(allCompetitorCounts)) {
-      if (count > topCompetitorMentions) {
-        topCompetitorMentions = count;
-        topCompetitor = name;
-      }
-    }
-
     // ─── Build visibility summary ───
     const brandDisplayName = report.brand_name || report.domain;
     const mentionPct = mentionRate !== null ? Math.round(mentionRate * 100) : 0;
@@ -386,7 +481,12 @@ export async function POST(req: NextRequest) {
       quality_meta: qualityMeta,
       top_competitor: topCompetitor || undefined,
       top_competitor_mentions: topCompetitorMentions,
+      top_competitors: topCompetitors,
       visibility_summary: visibilitySummary,
+      analysis_details: allAnalysisDetails,
+      composite_score: compositeScore,
+      composite_breakdown: compositeBreakdown,
+      recommendations,
       timings: {
         ...report.timings,
         llmMs: tEnd - t0,
