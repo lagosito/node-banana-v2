@@ -16,7 +16,6 @@ import type { ProviderName } from "@/lib/geo-check/storage";
 import { reviewReport } from "@/lib/geo-check/reviewer";
 
 // ─── CORS ───
-export const maxDuration = 300; // Vercel Pro — 6 prompts × 3 providers need ~5min
 
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -188,12 +187,11 @@ export async function POST(req: NextRequest) {
     }
 
     // Prevent double-run
-    if (report.status === "completed") {
-      return json({ error: "LLM phase already completed" }, { status: 409 });
-    }
-    // If status is "running", previous run likely timed out — reset to allow retry
     if (report.status === "running") {
-      await setReportStatus(report.id, "pending");
+      return json({ error: "LLM phase already running" }, { status: 409 });
+    }
+    if (report.status === "completed") {
+      return json({ error: "LLM-Phase bereits abgeschlossen" }, { status: 409 });
     }
 
     // Mark as running
@@ -222,27 +220,14 @@ export async function POST(req: NextRequest) {
 
     const t0 = Date.now();
 
-    // Run each provider with all prompts — parallelize prompts in batches of 3
+    // Run each provider with all prompts
     const providerPromises = enabledProviders.map(async (provider) => {
       const callFn = PROVIDERS[provider];
       const results: Array<{ prompt: string; text: string; error?: string }> = [];
 
-      // Run prompts in batches of 3 to avoid rate limiting
-      for (let i = 0; i < prompts.length; i += 3) {
-        const batch = prompts.slice(i, i + 3);
-        const batchResults = await Promise.allSettled(
-          batch.map(async (prompt) => {
-            const result = await callFn(prompt);
-            return { prompt, text: result.text, error: result.error };
-          }),
-        );
-        for (const r of batchResults) {
-          if (r.status === "fulfilled") {
-            results.push(r.value);
-          } else {
-            results.push({ prompt: "batch_error", text: "", error: String(r.reason).slice(0, 200) });
-          }
-        }
+      for (const prompt of prompts) {
+        const result = await callFn(prompt);
+        results.push({ prompt, text: result.text, error: result.error });
       }
 
       const providerStatus = {
@@ -520,7 +505,7 @@ export async function POST(req: NextRequest) {
     // Reset status so the endpoint can be retried (best effort)
     try {
       const { reportId } = await req.clone().json().catch(() => ({}));
-      if (reportId) await setReportStatus(reportId, "pending");
+      if (reportId) await setReportStatus(reportId, "error");
     } catch { /* best effort */ }
     return json({ error: message }, { status: 500 });
   }
