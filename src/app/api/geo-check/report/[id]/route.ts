@@ -42,6 +42,36 @@ export async function GET(
     await touchReport(report.id);
 
     // All data returned always (gate removed)
+    // Build compatibility fields for Lovable frontend (GEO-Audit format)
+    const providerTable = Object.entries(report.provider_status || {}).map(
+      ([name, ps]: [string, any]) => ({
+        name,
+        runs: ps.queriesRun || 0,
+        mentions: ps.mentions || 0,
+        avgPosition: 0,
+        cited: 0,
+      }),
+    );
+    const citedDomains: string[] = [];
+    if (report.analysis_details) {
+      const domainSet = new Set<string>();
+      for (const detail of Object.values(report.analysis_details) as any[]) {
+        for (const d of detail.cited_domains || []) {
+          if (d && typeof d === "string") domainSet.add(d);
+        }
+      }
+      citedDomains.push(...domainSet);
+    }
+    const findings = (report.top_problems || []).map((p: any, i: number) => ({
+      category: "GEO-Check",
+      finding: p.title || "",
+      recommendation: p.impact || "",
+      priority: i + 1,
+    }));
+    const zusammenfassung = report.visibility_summary || "";
+    const breakdown = report.composite_breakdown || [];
+    const score = report.composite_score ?? report.overall_score ?? 0;
+
     const response: Record<string, unknown> = {
       reportId: report.id,
       shortSlug: report.short_slug,
@@ -69,6 +99,13 @@ export async function GET(
       compositeScore: report.composite_score ?? null,
       compositeBreakdown: report.composite_breakdown || null,
       analysisDetails: report.analysis_details || null,
+      // Compatibility fields for Lovable frontend (GEO-Audit format)
+      findings,
+      providerTable,
+      citedDomains,
+      zusammenfassung,
+      breakdown,
+      score,
       // Gate status (informational only)
       gated: false,
       emailCollected: report.unlocked,
