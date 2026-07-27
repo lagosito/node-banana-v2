@@ -115,15 +115,23 @@ export async function POST(req: NextRequest) {
 
     // Rate limit
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
-    const rateLimit = await checkRateLimitDb(ip);
+    const bypassSecret = process.env.GEO_RATE_BYPASS_SECRET || "";
+    const bypassHeader = req.headers.get("x-geo-bypass") || "";
+    const isBypassed = bypassSecret && bypassHeader === bypassSecret;
+    const rateLimit = isBypassed
+      ? { allowed: true, remaining: 999 }
+      : await checkRateLimitDb(ip);
     if (!rateLimit.allowed) {
-      return json({ error: "Too many requests. Please try again tomorrow." }, { status: 429 });
+      return json(
+        { error: "Zu viele Anfragen, bitte versuchen Sie es morgen erneut." },
+        { status: 429, headers: { "x-ratelimit-limit": "5", "x-ratelimit-remaining": "0", "retry-after": "86400" } },
+      );
     }
 
     // Cache: if we already have a report for this domain, return it
     const cached = await getReportByDomain(dns.domain);
     if (cached) {
-      return json(buildV2Phase1(cached));
+      return json(buildV2Phase1(cached), { headers: { "x-ratelimit-limit": "5", "x-ratelimit-remaining": String(rateLimit.remaining) } });
     }
 
     // ─── Phase 1 pipeline ───
@@ -199,7 +207,7 @@ export async function POST(req: NextRequest) {
     // Fetch the full row for response
     const report = await getReport(reportId);
 
-    return json(buildV2Phase1(report!));
+    return json(buildV2Phase1(report!), { headers: { "x-ratelimit-limit": "5", "x-ratelimit-remaining": String(rateLimit.remaining) } });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unbekannter Fehler";
     // Expose Supabase URL issues (masked) without leaking secrets

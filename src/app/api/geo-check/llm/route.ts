@@ -351,8 +351,8 @@ export async function POST(req: NextRequest) {
         positionCount++;
       }
     }
-    const avgPos = positionCount > 0 ? avgPosition / positionCount : 0;
-    const positionScore = avgPos === 0 ? 0
+    const avgPos = positionCount > 0 ? avgPosition / positionCount : null;
+    const positionScore = avgPos === null ? null
       : avgPos <= 1 ? 100
       : avgPos <= 2 ? 70
       : avgPos <= 3 ? 50
@@ -369,7 +369,7 @@ export async function POST(req: NextRequest) {
     }
     const sentimentScore = brandMentionCount > 0
       ? ((positives + 0.5 * neutrals) / brandMentionCount) * 100
-      : 0;
+      : null; // null = no mentions, not "worst score"
 
     // Share of Voice: brand mentions / (brand + competitor mentions)
     const sovScore = (brandMentionCount + totalCompetitorMentions) > 0
@@ -377,20 +377,26 @@ export async function POST(req: NextRequest) {
       : 0;
 
     // Citation Rate: NOT calculated yet (cited-domains feature pending)
-    // Composite: Mention 50% + Position 25% + Sentiment 12.5% + SoV 12.5%
-    const compositeScore = Math.round(
-      mentionRateScore * 0.50
-      + positionScore * 0.25
-      + sentimentScore * 0.125
-      + sovScore * 0.125
-    );
-
-    const compositeBreakdown = [
-      { component: "Erwaehnungsrate", raw: `${Math.round(mentionRateScore)}%`, weight: "50%", points: `${Math.round(mentionRateScore * 0.50)}` },
-      { component: "Position", raw: avgPos > 0 ? `Platz ${avgPos.toFixed(1)}` : "n/a", weight: "25%", points: `${Math.round(positionScore * 0.25)}` },
-      { component: "Sentiment", raw: `${Math.round(sentimentScore)}%`, weight: "12.5%", points: `${Math.round(sentimentScore * 0.125)}` },
-      { component: "Share of Voice", raw: `${Math.round(sovScore)}%`, weight: "12.5%", points: `${Math.round(sovScore * 0.125)}` },
+    // Composite: weights renormalized when components are null (no data)
+    const components = [
+      { name: "Erwaehnungsrate", value: mentionRateScore, weight: 0.50 },
+      { name: "Position", value: positionScore, weight: 0.25 },
+      { name: "Sentiment", value: sentimentScore, weight: 0.125 },
+      { name: "Share of Voice", value: sovScore, weight: 0.125 },
     ];
+    const availableComponents = components.filter((c) => c.value !== null);
+    const totalWeight = availableComponents.reduce((sum, c) => sum + c.weight, 0);
+    const compositeScore = totalWeight > 0
+      ? Math.round(availableComponents.reduce((sum, c) => sum + (c.value as number) * (c.weight / totalWeight), 0))
+      : 0;
+
+    const compositeBreakdown = components.map((c) => ({
+      component: c.name,
+      raw: c.value === null ? "n/a" : `${Math.round(c.value as number)}${c.name === "Position" ? "" : "%"}`,
+      weight: c.value === null ? "excluido" : `${Math.round((c.weight / totalWeight) * 100)}%`,
+      points: c.value === null ? "—" : `${Math.round((c.value as number) * (c.weight / totalWeight))}`,
+      excluded: c.value === null,
+    }));
 
     // ─── Recommendations (deterministic from data) ───
     const recommendations: string[] = [];
@@ -404,13 +410,13 @@ export async function POST(req: NextRequest) {
     if (mentionRate !== null && mentionRate >= 0.7) {
       recommendations.push("Ihre Sichtbarkeit ist bereits stark. Schuetzen Sie diese Position durch regelmässige Aktualisierung Ihrer Inhalte und ueberwachen Sie die KI-Empfehlungen.");
     }
-    if (avgPos > 2) {
+    if (avgPos !== null && avgPos > 2) {
       recommendations.push("Wenn Ihre Marke erwaehnt wird, erscheint sie durchschnittlich an Position " + avgPos.toFixed(1) + ". Verbessern Sie Ihre Nennung in Verzeichnissen und Presseportalen.");
     }
     if (topCompetitor && topCompetitorMentions > brandMentionCount) {
       recommendations.push(`Ihr Wettbewerber "${topCompetitor}" wird haeufiger erwaehnt (${topCompetitorMentions} vs. ${brandMentionCount} mal). Analysieren Sie, welche Quellen ${topCompetitor} zitieren.`);
     }
-    if (sentimentScore < 50 && brandMentionCount > 0) {
+    if (sentimentScore !== null && sentimentScore < 50 && brandMentionCount > 0) {
       recommendations.push("Das Sentiment Ihrer Marke in KI-Antworten ist ueberwiegend neutral. Erzeugen Sie positive Signale durch Kundenbewertungen und Fallstudien auf Ihrer Website.");
     }
     if (recommendations.length === 0) {

@@ -106,6 +106,7 @@ export async function GET(
       zusammenfassung,
       breakdown,
       score,
+      technicalScore: report.overall_score ?? 0, // Phase 1 technical score (separate from composite)
       // Gate status (informational only)
       gated: false,
       emailCollected: report.unlocked,
