@@ -125,7 +125,7 @@ export async function createReport(data: {
 
 export async function setReportStatus(
   id: string,
-  status: "running" | "completed" | "error",
+  status: "pending" | "running" | "completed" | "error",
 ): Promise<void> {
   const sb = supabase();
   if (!sb) return;
