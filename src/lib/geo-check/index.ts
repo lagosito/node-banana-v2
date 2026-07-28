@@ -156,9 +156,45 @@ export async function fetchPageTitle(domain: string): Promise<string> {
   return "";
 }
 
+/** Clean a brand name extracted from HTML: strip suffixes, normalize */
+function cleanBrandName(raw: string): string {
+  let name = raw.trim();
+  // Remove common suffixes after a separator: " | Home", " – Willkommen", " - Startseite"
+  name = name.replace(/\s*[|–—-]\s*(Home|Startseite|Willkommen|Homepage|Impressum|Kontakt).*$/i, "");
+  // Remove trailing punctuation
+  name = name.replace(/[.\s]+$/, "");
+  // Limit length (some titles are very long)
+  if (name.length > 60) name = name.substring(0, 60).replace(/\s+\S*$/, "");
+  return name || "";
+}
+
 /**
- * Fetch the real brand name from the website's <title> or og:title.
- * Falls back to extractBrandFromDomain if fetch fails.
+ * FIX 5: Brand guard by form — rejects non-brand strings deterministically.
+ */
+function isValidBrand(raw: string): boolean {
+  const name = raw.trim();
+  if (!name) return false;
+  const words = name.split(/\s+/);
+  if (words.length > 4) return false;
+  const PREPOSITIONS = new Set([
+    "in", "für", "aus", "von", "mit", "der", "die", "das", "dem", "den",
+    "im", "zum", "zur", "bei", "auf", "an", "am", "um", "nach", "vor",
+    "über", "unter", "zwischen", "ohne", "seit", "während", "trotz",
+  ]);
+  const lastWord = words[words.length - 1].toLowerCase().replace(/[^a-zäöüß]/g, "");
+  if (PREPOSITIONS.has(lastWord)) return false;
+  if (/[|–—:»]/.test(name) && name.split(/[|–—:»]/).length > 1) return false;
+  const BLACKLIST = new Set([
+    "homepage", "startseite", "willkommen", "willkommen bei", "firma", "unternehmen",
+    "online-shop", "portal", "shop", "dienstleistung", "anbieter", "service",
+    "webseite", "website", "seite", "home",
+  ]);
+  if (BLACKLIST.has(name.toLowerCase())) return false;
+  return true;
+}
+
+/**
+ * Extract brand name with fallback chain: og:title → title → h1 → og:site_name → JSON-LD → domain.
  */
 export async function fetchBrandName(domain: string): Promise<string> {
   const fallback = extractBrandFromDomain(domain);
@@ -173,43 +209,37 @@ export async function fetchBrandName(domain: string): Promise<string> {
     clearTimeout(timeout);
     const html = await res.text();
 
-    // Try og:title first (most reliable)
     const ogMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i)
       || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i);
     if (ogMatch?.[1]) {
       const cleaned = cleanBrandName(ogMatch[1]);
-      if (cleaned) return cleaned;
+      if (cleaned && isValidBrand(cleaned)) return cleaned;
     }
-
-    // Try <title> tag
     const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
     if (titleMatch?.[1]) {
       const cleaned = cleanBrandName(titleMatch[1]);
-      if (cleaned) return cleaned;
+      if (cleaned && isValidBrand(cleaned)) return cleaned;
     }
-
-    // Try first <h1>
     const h1Match = html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
     if (h1Match?.[1]) {
       const cleaned = cleanBrandName(h1Match[1]);
-      if (cleaned) return cleaned;
+      if (cleaned && isValidBrand(cleaned)) return cleaned;
+    }
+    const siteNameMatch = html.match(/<meta[^>]*property=["']og:site_name["'][^>]*content=["']([^"']+)["']/i)
+      || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:site_name["']/i);
+    if (siteNameMatch?.[1]) {
+      const cleaned = cleanBrandName(siteNameMatch[1]);
+      if (cleaned && isValidBrand(cleaned)) return cleaned;
+    }
+    const jsonLdMatch = html.match(/"@type"\s*:\s*"Organization"[^}]*"name"\s*:\s*"([^"]+)"/i);
+    if (jsonLdMatch?.[1]) {
+      const cleaned = cleanBrandName(jsonLdMatch[1]);
+      if (cleaned && isValidBrand(cleaned)) return cleaned;
     }
   } catch {
     // Fall through to domain-based name
   }
   return fallback;
-}
-
-/** Clean a brand name extracted from HTML: strip suffixes, normalize */
-function cleanBrandName(raw: string): string {
-  let name = raw.trim();
-  // Remove common suffixes after a separator: " | Home", " – Willkommen", " - Startseite"
-  name = name.replace(/\s*[|–—-]\s*(Home|Startseite|Willkommen|Homepage|Impressum|Kontakt).*$/i, "");
-  // Remove trailing punctuation
-  name = name.replace(/[.\s]+$/, "");
-  // Limit length (some titles are very long)
-  if (name.length > 60) name = name.substring(0, 60).replace(/\s+\S*$/, "");
-  return name || extractBrandFromDomain("x.com"); // shouldn't happen
 }
 
 // ─── Brand Aliases ───
