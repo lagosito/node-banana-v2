@@ -175,6 +175,7 @@ export function extractBusinessDescriptor(
   ]);
 
   // ─── Build brand/domain guard tokens ───
+  console.log(`[Guard-input] title="${title}" desc="${(description||"").slice(0,80)}" domain="${domain||""}" brand="${brandName||""}"`);
   const guardTokens: string[] = [];
   if (brandName) {
     const core = normalizeForGuard(brandName);
@@ -226,6 +227,7 @@ export function extractBusinessDescriptor(
       const isRejected = guardTokens.some((token) =>
         descriptorNorm.includes(token) || token.includes(descriptorNorm),
       );
+      console.log(`[Guard] descriptor="${descriptor}" norm="${descriptorNorm}" tokens=${JSON.stringify(guardTokens)} rejected=${isRejected}`);
       if (isRejected) continue; // Skip this candidate, try next segment
     }
 
