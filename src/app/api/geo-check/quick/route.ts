@@ -96,7 +96,7 @@ function formatCheck(check: ScoreCheck) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { website_url, vertical, region, _hp } = body;
+    const { website_url, vertical, region, _hp, force } = body;
 
     if (_hp) return json({ ok: true });
 
@@ -128,10 +128,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Cache: if we already have a report for this domain, return it
-    const cached = await getReportByDomain(dns.domain);
-    if (cached) {
-      return json(buildV2Phase1(cached), { headers: { "x-ratelimit-limit": "5", "x-ratelimit-remaining": String(rateLimit.remaining) } });
+    // Cache: if we already have a report for this domain, return it (skip when force=true)
+    if (!force) {
+      const cached = await getReportByDomain(dns.domain);
+      if (cached) {
+        return json(buildV2Phase1(cached), { headers: { "x-ratelimit-limit": "5", "x-ratelimit-remaining": String(rateLimit.remaining) } });
+      }
     }
 
     // ─── Phase 1 pipeline ───

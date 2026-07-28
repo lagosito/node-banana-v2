@@ -318,6 +318,11 @@ export async function POST(req: NextRequest) {
         console.error("Haiku batch analysis failed:", err);
         // Fall back to 0 mentions — Haiku failure is logged, not fatal
       }
+
+      // Re-save provider statuses with final mention counts from Haiku analysis
+      for (const provider of Object.keys(providerStatuses)) {
+        await setProviderStatus(report.id, provider as ProviderName, providerStatuses[provider]);
+      }
     }
 
     // ─── Compute top competitor + top 5 ranking from Haiku analysis ───

@@ -38,8 +38,8 @@ export async function GET(
       return json({ error: "Report not found" }, { status: 404 });
     }
 
-    // Extend TTL on access
-    await touchReport(report.id);
+    // Extend TTL on access — REMOVED: was keeping old reports alive indefinitely
+    // touchReport(report.id);
 
     // All data returned always (gate removed)
     // Build compatibility fields for Lovable frontend (GEO-Audit format)
@@ -48,8 +48,9 @@ export async function GET(
         name,
         runs: ps.queriesRun || 0,
         mentions: ps.mentions || 0,
-        avgPosition: 0,
+        avgPosition: (ps.mentions || 0) > 0 ? null : null, // null = no data, never 0
         cited: 0,
+        incomplete: ps.status === "partial" || ps.status === "error",
       }),
     );
     const citedDomains: string[] = [];
