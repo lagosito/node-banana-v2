@@ -102,12 +102,98 @@ export function inferVerticalFromTitle(title: string): ValidVertical {
   return "Other";
 }
 
-/**
- * Resolve vertical: if "Other", infer from title. Otherwise return as-is.
- */
+/** Resolve vertical: if "Other", infer from title. Otherwise return as-is. */
 export function resolveVertical(vertical: string, title?: string): ValidVertical {
   if (vertical === "Other" && title) {
     return inferVerticalFromTitle(title);
   }
   return normalizeVertical(vertical);
+}
+
+// ─── Other: Descriptor-based prompts ───
+
+/** 6 German templates for "Other" vertical — uses "Anbieter für" to avoid pluralization issues */
+export const OTHER_TEMPLATES = [
+  "Welche Anbieter für {descriptor} in {region} kannst du empfehlen?",
+  "Ich suche {descriptor} in {region}. Was empfiehlst du?",
+  "Vergleiche die besten Anbieter für {descriptor} in {region}.",
+  "Wo kann ich {descriptor} in {region} finden?",
+  "Welcher Anbieter für {descriptor} in {region} hat die besten Bewertungen?",
+  "Gibt es in {region} Anbieter für {descriptor} mit eigenem Online-Shop?",
+];
+
+/** Build prompts for "Other" vertical using descriptor extracted from crawl */
+export function buildOtherPrompts(descriptor: string, region: string): string[] {
+  return OTHER_TEMPLATES.map((t) =>
+    t.replace(/{descriptor}/g, descriptor).replace(/{region}/g, region),
+  );
+}
+
+/**
+ * Extract a business descriptor (German noun phrase) from page title and meta description.
+ * Returns { descriptor, confidence } where confidence is 0-1.
+ * Returns null descriptor when extraction fails.
+ */
+export function extractBusinessDescriptor(
+  title: string,
+  description: string | null,
+): { descriptor: string | null; confidence: number } {
+  // Generic words to strip (brand-like, navigation, boilerplate)
+  const STRIP = new Set([
+    "home", "startseite", "willkommen", "willkommen bei",
+    "offizielle website", "offizieller", "online shop", "online-shop",
+    "ihre", "deine", "mein", "unser", "unsere",
+    "gmbh", "ug", "kg", "ag", "ohg", "ec", "ev",
+    "hamburg", "berlin", "münchen", "köln", "frankfurt", "deutschland",
+    "de", "at", "ch", "com", "de", "shop", "portal",
+    "seite", "site", "webseite", "website",
+  ]);
+
+  // Combine title and description
+  const text = `${title} ${description || ""}`.toLowerCase();
+
+  // Remove brand-like segments (before " - ", " | ", " – ", " — ")
+  const segments = text.split(/\s*[-–—|]\s*/);
+  // Use the last segment (often the business descriptor) or the longest one
+  const candidates = segments
+    .map((s) => s.trim())
+    .filter((s) => s.length > 2);
+
+  // Try each segment for descriptor extraction
+  for (const segment of candidates) {
+    // Split into words
+    const words = segment.split(/\s+/).filter((w) => w.length > 1);
+
+    // Remove generic/boilerplate words
+    const meaningful = words.filter((w) => {
+      const clean = w.replace(/[^a-zäöüß]/g, "");
+      return clean.length > 1 && !STRIP.has(clean);
+    });
+
+    if (meaningful.length === 0) continue;
+
+    // Take the meaningful words as descriptor (max 4 words to keep it concise)
+    const descriptor = meaningful.slice(0, 4).join(" ");
+
+    // Confidence scoring
+    let confidence = 0;
+    if (meaningful.length >= 2) confidence = 0.7;
+    if (meaningful.length >= 3) confidence = 0.85;
+    if (meaningful.length >= 4) confidence = 0.9;
+
+    // Boost confidence if German business words are present
+    const businessWords = [
+      "anbieter", "dienstleistung", "laden", "geschäft", "studio",
+      "werkstatt", "betrieb", "firma", "hersteller", "produkt",
+      "beratung", "service", "kurse", "behandlung", "pflege",
+      "montage", "reparatur", "planung", "beratung",
+    ];
+    if (meaningful.some((w) => businessWords.some((bw) => w.includes(bw)))) {
+      confidence = Math.min(confidence + 0.1, 1);
+    }
+
+    return { descriptor, confidence };
+  }
+
+  return { descriptor: null, confidence: 0 };
 }

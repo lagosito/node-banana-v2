@@ -46,6 +46,9 @@ export interface ReportRow {
   lead_id: string | null;
   created_at: string;
   expires_at: string;
+  // T6: Other vertical descriptor
+  prompts_used: string[] | null;
+  vertical_resolved: string | null;
 }
 
 export type ProviderName = "gemini" | "openai" | "perplexity";
@@ -175,6 +178,8 @@ export async function setLlmResults(
     analysis_details?: any;
     composite_score?: number;
     composite_breakdown?: any;
+    prompts_used?: string[];
+    vertical_resolved?: string;
   },
 ): Promise<void> {
   const sb = supabase();
@@ -196,6 +201,8 @@ export async function setLlmResults(
       analysis_details: data.analysis_details ?? null,
       composite_score: data.composite_score ?? null,
       composite_breakdown: data.composite_breakdown ?? null,
+      prompts_used: data.prompts_used ?? null,
+      vertical_resolved: data.vertical_resolved ?? null,
       status: "completed",
     })
     .eq("id", id);

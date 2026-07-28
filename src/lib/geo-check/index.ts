@@ -26,6 +26,9 @@ import {
   buildPrompt,
   resolveVertical,
   inferVerticalFromTitle,
+  OTHER_TEMPLATES,
+  buildOtherPrompts,
+  extractBusinessDescriptor,
 } from "./config";
 export {
   VALID_VERTICALS,
@@ -37,6 +40,9 @@ export {
   buildPrompt,
   resolveVertical,
   inferVerticalFromTitle,
+  OTHER_TEMPLATES,
+  buildOtherPrompts,
+  extractBusinessDescriptor,
 };
 
 // Re-export fetchPageTitle (defined below, exported here for external consumers)

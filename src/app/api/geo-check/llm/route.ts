@@ -3,14 +3,13 @@
 // Body: { reportId: string }
 
 import { NextRequest, NextResponse } from "next/server";
-import { fetchBrandName, normalizeVertical, QUICK_PROMPTS, buildPrompt, buildBrandAliases, extractCoreBrand, resolveVertical, fetchPageTitle } from "@/lib/geo-check";
+import { fetchBrandName, normalizeVertical, QUICK_PROMPTS, buildPrompt, buildBrandAliases, extractCoreBrand, fetchPageTitle, buildOtherPrompts, extractBusinessDescriptor } from "@/lib/geo-check";
 import { analyzeResponseBatch } from "@/lib/geo-audit/analyzer";
 import {
   getReport,
   setReportStatus,
   setProviderStatus,
   setLlmResults,
-  touchReport,
 } from "@/lib/geo-check/storage";
 import type { ProviderName } from "@/lib/geo-check/storage";
 import { reviewReport } from "@/lib/geo-check/reviewer";
@@ -201,11 +200,40 @@ export async function POST(req: NextRequest) {
 
     const brandName = report.brand_name || await fetchBrandName(report.domain);
     const rawTitle = await fetchPageTitle(report.domain);
-    const vertical = resolveVertical(report.vertical || "Other", rawTitle);
+    const reportVertical = report.vertical || "Other";
     const region = report.region || "Deutschland";
 
-    // Build prompts (from Prompt Library logic — vertical-aware)
-    const prompts = QUICK_PROMPTS.map((t) => buildPrompt(t, vertical, region));
+    // Build prompts based on vertical type
+    let prompts: string[];
+    let verticalResolved = reportVertical;
+    let otherDescriptor: string | null = null;
+
+    if (reportVertical === "Other") {
+      // C2: Extract descriptor from crawl — reject if confidence too low
+      const { descriptor, confidence } = extractBusinessDescriptor(rawTitle || "", null);
+      otherDescriptor = descriptor;
+
+      if (!descriptor || confidence < 0.5) {
+        // C2: Fallback — don't waste 18 LLM calls on bad prompts
+        await setReportStatus(report.id, "error");
+        return json({
+          error: "Wir konnten Ihre Branche nicht eindeutig bestimmen. Bitte wählen Sie eine Branche aus der Liste.",
+          errorType: "descriptor_extraction_failed",
+        }, { status: 422 });
+      }
+
+      // Build descriptor-based prompts
+      prompts = buildOtherPrompts(descriptor, region);
+      verticalResolved = `Other (descriptor: ${descriptor})`;
+    } else {
+      // Standard vertical: use curated prompts from Prompt Library
+      const vertical = normalizeVertical(reportVertical);
+      prompts = QUICK_PROMPTS.map((t) => buildPrompt(t, vertical, region));
+    }
+
+    // Log prompts for auditability (C1)
+    console.log(`[GEO-Check] vertical=${reportVertical}, verticalResolved=${verticalResolved}`);
+    console.log(`[GEO-Check] prompts:`, prompts);
 
     // Run all enabled providers in parallel (Promise.allSettled)
     const enabledProviders = (["gemini", "openai", "perplexity"] as ProviderName[]).filter(isProviderEnabled);
@@ -510,6 +538,8 @@ export async function POST(req: NextRequest) {
       composite_score: compositeScore,
       composite_breakdown: compositeBreakdown,
       recommendations,
+      prompts_used: prompts, // C1: exact prompts sent to providers
+      vertical_resolved: verticalResolved, // C3: what vertical was actually used
       timings: {
         ...report.timings,
         llmMs: tEnd - t0,

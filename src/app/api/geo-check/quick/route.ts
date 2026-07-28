@@ -10,7 +10,7 @@ import {
   normalizeVertical,
   VALID_VERTICALS,
   fetchPageTitle,
-  resolveVertical,
+  extractBusinessDescriptor,
 } from "@/lib/geo-check";
 import { collectFacts } from "@/lib/geo-check/crawler";
 import { scoreReport } from "@/lib/geo-check/scoring";
@@ -149,13 +149,19 @@ export async function POST(req: NextRequest) {
 
     const brandName = await fetchBrandName(dns.domain);
 
-    // When vertical is "Other", infer from page title
+    // When vertical is "Other", extract descriptor from crawl (don't infer vertical)
     let effectiveVertical = vertical || "Other";
+    let otherDescriptor: string | null = null;
+    let otherConfidence = 0;
     if (effectiveVertical === "Other") {
       const rawTitle = await fetchPageTitle(dns.domain);
       if (rawTitle) {
-        effectiveVertical = resolveVertical("Other", rawTitle);
+        const { descriptor, confidence } = extractBusinessDescriptor(rawTitle, null);
+        otherDescriptor = descriptor;
+        otherConfidence = confidence;
+        // Keep vertical as "Other" — don't map to a known vertical
       }
+      // If descriptor extraction failed (confidence < 0.5), Phase 2 will reject
     }
 
     // Build topProblems from failing checks

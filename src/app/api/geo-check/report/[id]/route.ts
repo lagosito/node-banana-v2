@@ -2,7 +2,7 @@
 // GET /api/geo-check/report/[id]
 
 import { NextRequest, NextResponse } from "next/server";
-import { getReport, touchReport, createLead } from "@/lib/geo-check/storage";
+import { getReport, createLead } from "@/lib/geo-check/storage";
 
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -111,6 +111,9 @@ export async function GET(
       // Gate status (informational only)
       gated: false,
       emailCollected: report.unlocked,
+      // T6: Other vertical
+      promptsUsed: report.prompts_used || null,
+      verticalResolved: report.vertical_resolved || null,
     };
 
     return json(response);
@@ -183,6 +186,8 @@ export async function POST(req: NextRequest) {
       compositeScore: unlocked!.composite_score ?? null,
       compositeBreakdown: unlocked!.composite_breakdown || null,
       analysisDetails: unlocked!.analysis_details || null,
+      promptsUsed: unlocked!.prompts_used || null,
+      verticalResolved: unlocked!.vertical_resolved || null,
       gated: false,
       emailCollected: true,
     });
