@@ -219,3 +219,4 @@ Variables: {region} only ({product} removed)
 - **Wine** [Info] [DE]: "Welche Weingüter aus {region} sind auf Instagram aktiv und einen Blick wert?"
 - **Wine** [Empfehlung] [DE]: "Ich suche ein Weingut in {region} für eine Weinprobe. Was empfiehlst du?"
 - **Wine** [Kauf] [DE]: "Was ist ein gutes Weingut für Wein unter 20 Euro in {region}?"
+# trigger redeploy for env var change
