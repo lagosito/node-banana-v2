@@ -210,7 +210,8 @@ export async function POST(req: NextRequest) {
 
     if (reportVertical === "Other") {
       // C2: Extract descriptor from crawl — reject if confidence too low
-      const { descriptor, confidence } = extractBusinessDescriptor(rawTitle || "", null, report.domain, brandName);
+      const metaDesc = report.verified_facts?.meta?.description || null;
+      const { descriptor, confidence } = extractBusinessDescriptor(rawTitle || "", metaDesc, report.domain, brandName);
       otherDescriptor = descriptor;
 
       if (!descriptor || confidence < 0.5) {

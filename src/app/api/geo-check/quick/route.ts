@@ -156,7 +156,7 @@ export async function POST(req: NextRequest) {
     if (effectiveVertical === "Other") {
       const rawTitle = await fetchPageTitle(dns.domain);
       if (rawTitle) {
-        const { descriptor, confidence } = extractBusinessDescriptor(rawTitle, null, dns.domain, brandName);
+        const { descriptor, confidence } = extractBusinessDescriptor(rawTitle, facts.meta.description, dns.domain, brandName);
         otherDescriptor = descriptor;
         otherConfidence = confidence;
         // Keep vertical as "Other" — don't map to a known vertical
