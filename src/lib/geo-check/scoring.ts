@@ -115,7 +115,7 @@ function scoreTechnik(facts: VerifiedFacts, floor: number): CategoryScore {
 
   // HTTPS (always true in our crawler, but check anyway)
   const https = facts.resolvedUrl.startsWith("https://");
-  checks.push({ id: "technik-https", label: "HTTPS verschluesselt", passed: https, weight: 15, detail: https ? "Seite ist per HTTPS erreichbar" : "Keine HTTPS-Verschluesselung", evidence: facts.resolvedUrl });
+  checks.push({ id: "technik-https", label: "HTTPS verschlüsselt", passed: https, weight: 15, detail: https ? "Seite ist per HTTPS erreichbar" : "Keine HTTPS-Verschlüsselung", evidence: facts.resolvedUrl });
 
   // Sitemap
   const sitemap = facts.sitemap.found;
@@ -131,7 +131,7 @@ function scoreTechnik(facts: VerifiedFacts, floor: number): CategoryScore {
 
   // HTML size (not too large)
   const sizeOk = facts.perf.htmlSizeKb < 500;
-  checks.push({ id: "technik-size", label: "HTML-Gruesse angemessen", passed: sizeOk, weight: 15, detail: `${facts.perf.htmlSizeKb}KB`, evidence: `${facts.perf.htmlSizeKb}KB` });
+  checks.push({ id: "technik-size", label: "HTML-Größe angemessen", passed: sizeOk, weight: 15, detail: `${facts.perf.htmlSizeKb}KB`, evidence: `${facts.perf.htmlSizeKb}KB` });
 
   // TTFB
   const ttfbOk = facts.perf.ttfbMs < 2000;
@@ -160,7 +160,7 @@ function scoreAiReadiness(facts: VerifiedFacts, floor: number): CategoryScore {
   // Question headings
   const questions = facts.content.questionHeadings.length;
   const questionsOk = questions >= 2;
-  checks.push({ id: "ai-questions", label: "Fragen als Ueberschriften", passed: questionsOk, weight: 15, detail: `${questions} Fragen in h2/h3`, evidence: facts.content.questionHeadings.slice(0, 3).join(", ") || "keine" });
+  checks.push({ id: "ai-questions", label: "Fragen als Überschriften", passed: questionsOk, weight: 15, detail: `${questions} Fragen in h2/h3`, evidence: facts.content.questionHeadings.slice(0, 3).join(", ") || "keine" });
 
   // FAQ
   const faq = facts.schema.hasFAQ || facts.content.hasFaqSection;
@@ -177,17 +177,17 @@ function scoreContent(facts: VerifiedFacts, floor: number): CategoryScore {
   // Word count
   const words = facts.content.wordCount;
   const wordsOk = words >= 300;
-  checks.push({ id: "content-words", label: "Genuegend Inhalt", passed: wordsOk, weight: 20, detail: `${words} Woerter`, evidence: `${words} Woerter auf ${facts.scannedUrls.length} Seiten` });
+  checks.push({ id: "content-words", label: "Genügend Inhalt", passed: wordsOk, weight: 20, detail: `${words} Wörter`, evidence: `${words} Wörter auf ${facts.scannedUrls.length} Seiten` });
 
   // Heading hierarchy
   const hasH1 = facts.content.h1Count >= 1;
   const hasH2 = facts.content.h2Count >= 1;
-  checks.push({ id: "content-hierarchy", label: "Ueberschriften-Hierarchie", passed: hasH1 && hasH2, weight: 20, detail: `h1=${facts.content.h1Count} h2=${facts.content.h2Count} h3=${facts.content.h3Count}`, evidence: `h1: ${facts.content.h1Count}, h2: ${facts.content.h2Count}, h3: ${facts.content.h3Count}` });
+  checks.push({ id: "content-hierarchy", label: "Überschriften-Hierarchie", passed: hasH1 && hasH2, weight: 20, detail: `h1=${facts.content.h1Count} h2=${facts.content.h2Count} h3=${facts.content.h3Count}`, evidence: `h1: ${facts.content.h1Count}, h2: ${facts.content.h2Count}, h3: ${facts.content.h3Count}` });
 
   // Bullets
   const bullets = facts.content.bulletPoints;
   const bulletsOk = bullets >= 3;
-  checks.push({ id: "content-bullets", label: "Aufzaehlungen", passed: bulletsOk, weight: 15, detail: `${bullets} Listenpunkte`, evidence: `${bullets} <li>-Elemente` });
+  checks.push({ id: "content-bullets", label: "Aufzählungen", passed: bulletsOk, weight: 15, detail: `${bullets} Listenpunkte`, evidence: `${bullets} <li>-Elemente` });
 
   // FAQ
   const faq = facts.content.hasFaqSection;
@@ -195,7 +195,7 @@ function scoreContent(facts: VerifiedFacts, floor: number): CategoryScore {
 
   // Freshness
   const fresh = facts.freshness.freshnessScore >= 60;
-  checks.push({ id: "content-fresh", label: "Aktualitaet", passed: fresh, weight: 15, detail: `${facts.freshness.freshnessScore}/100`, evidence: facts.freshness.daysSinceUpdate !== null ? `Letztes Update vor ${facts.freshness.daysSinceUpdate} Tagen` : "Kein Datums-Hinweis" });
+  checks.push({ id: "content-fresh", label: "Aktualität", passed: fresh, weight: 15, detail: `${facts.freshness.freshnessScore}/100`, evidence: facts.freshness.daysSinceUpdate !== null ? `Letztes Update vor ${facts.freshness.daysSinceUpdate} Tagen` : "Kein Datums-Hinweis" });
 
   // Images with alt
   const imgTotal = facts.content.imagesTotal;
@@ -279,7 +279,7 @@ function scoreDesignUx(facts: VerifiedFacts, floor: number): CategoryScore {
 
   // Content volume (not trivial)
   const hasContent = facts.content.wordCount >= 100;
-  checks.push({ id: "ux-content", label: "Genuegend Inhalte", passed: hasContent, weight: 20, detail: `${facts.content.wordCount} Woerter`, evidence: `${facts.content.wordCount} Woerter` });
+  checks.push({ id: "ux-content", label: "Genügend Inhalte", passed: hasContent, weight: 20, detail: `${facts.content.wordCount} Wörter`, evidence: `${facts.content.wordCount} Wörter` });
 
   const raw = weightedAverage(checks);
   const score = applyFloor(raw, floor);
@@ -353,12 +353,12 @@ function scoreCitability(facts: VerifiedFacts): CitabilityScore {
   const questions = facts.content.questionHeadings.length;
   if (questions >= 3) breakdown.answerStructure += 12;
   else if (questions >= 1) breakdown.answerStructure += 6;
-  checks.push({ id: "cit-questions", label: "Fragen als Ueberschriften", passed: questions >= 3, weight: 12, detail: `${questions} Fragen`, evidence: facts.content.questionHeadings.slice(0, 3).join(", ") || "keine" });
+  checks.push({ id: "cit-questions", label: "Fragen als Überschriften", passed: questions >= 3, weight: 12, detail: `${questions} Fragen`, evidence: facts.content.questionHeadings.slice(0, 3).join(", ") || "keine" });
 
   const bullets = facts.content.bulletPoints;
   if (bullets >= 10) breakdown.answerStructure += 8;
   else if (bullets >= 3) breakdown.answerStructure += 4;
-  checks.push({ id: "cit-bullets", label: "Aufzaehlungen", passed: bullets >= 3, weight: 8, detail: `${bullets} Punkte`, evidence: `${bullets} <li>` });
+  checks.push({ id: "cit-bullets", label: "Aufzählungen", passed: bullets >= 3, weight: 8, detail: `${bullets} Punkte`, evidence: `${bullets} <li>` });
 
   if (facts.content.hasFaqSection) { breakdown.answerStructure += 8; checks.push({ id: "cit-faq-content", label: "FAQ-Sektion", passed: true, weight: 8, detail: "FAQ-Sektion vorhanden", evidence: "FAQ-Header erkannt" }); }
   else { checks.push({ id: "cit-faq-content", label: "FAQ-Sektion", passed: false, weight: 8, detail: "Keine FAQ-Sektion", evidence: "none" }); }
@@ -378,8 +378,8 @@ function scoreCitability(facts: VerifiedFacts): CitabilityScore {
   if (facts.eeat.hasSourceLinks > 0) { breakdown.trust += 7; checks.push({ id: "cit-sources", label: "Externe Quellen", passed: true, weight: 7, detail: `${facts.eeat.hasSourceLinks} externe Links`, evidence: `${facts.eeat.hasSourceLinks} Links` }); }
   else { checks.push({ id: "cit-sources", label: "Externe Quellen", passed: false, weight: 7, detail: "Keine externen Quellen", evidence: "none" }); }
 
-  if (facts.freshness.freshnessScore >= 60) { breakdown.trust += 7; checks.push({ id: "cit-fresh", label: "Aktualitaet", passed: true, weight: 7, detail: `${facts.freshness.freshnessScore}/100`, evidence: `Score: ${facts.freshness.freshnessScore}` }); }
-  else { checks.push({ id: "cit-fresh", label: "Aktualitaet", passed: false, weight: 7, detail: `${facts.freshness.freshnessScore}/100`, evidence: `Score: ${facts.freshness.freshnessScore}` }); }
+  if (facts.freshness.freshnessScore >= 60) { breakdown.trust += 7; checks.push({ id: "cit-fresh", label: "Aktualität", passed: true, weight: 7, detail: `${facts.freshness.freshnessScore}/100`, evidence: `Score: ${facts.freshness.freshnessScore}` }); }
+  else { checks.push({ id: "cit-fresh", label: "Aktualität", passed: false, weight: 7, detail: `${facts.freshness.freshnessScore}/100`, evidence: `Score: ${facts.freshness.freshnessScore}` }); }
 
   const total = breakdown.machineReadable + breakdown.answerStructure + breakdown.trust;
   return { score: Math.round(total), breakdown, checks };
