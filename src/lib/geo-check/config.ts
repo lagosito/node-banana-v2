@@ -158,6 +158,8 @@ export function extractBusinessDescriptor(
     "home", "startseite", "willkommen", "willkommen bei",
     "offizielle website", "offizieller", "online shop", "online-shop",
     "ihre", "deine", "mein", "unser", "unsere",
+    "wir", "bei", "der", "die", "das", "den", "dem", "des",
+    "ein", "eine", "einer", "eines", "einem", "einen",
     "gmbh", "ug", "kg", "ag", "ohg", "ec", "ev",
     "hamburg", "berlin", "münchen", "köln", "frankfurt", "deutschland",
     "de", "at", "ch", "com", "shop", "portal",
