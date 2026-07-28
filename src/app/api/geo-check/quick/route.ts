@@ -113,18 +113,21 @@ export async function POST(req: NextRequest) {
       return json({ error: dns.error }, { status: 400 });
     }
 
-    // Rate limit
+    // Rate limit — read env vars per request (no deploy needed to change)
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
     const bypassSecret = process.env.GEO_RATE_BYPASS_SECRET || "";
     const bypassHeader = req.headers.get("x-geo-bypass") || "";
     const isBypassed = bypassSecret && bypassHeader === bypassSecret;
-    const rateLimit = isBypassed
-      ? { allowed: true, remaining: 999 }
-      : await checkRateLimitDb(ip);
+    const maxPerDay = parseInt(process.env.GEO_RATE_LIMIT_PER_DAY || "5", 10) || 5;
+    const allowlist = (process.env.GEO_RATE_LIMIT_ALLOWLIST || "").split(",").map(s => s.trim()).filter(Boolean);
+    const isAllowlisted = allowlist.includes(ip);
+    const rateLimit = (isBypassed || isAllowlisted)
+      ? { allowed: true, remaining: maxPerDay }
+      : await checkRateLimitDb(ip, maxPerDay);
     if (!rateLimit.allowed) {
       return json(
         { error: "Zu viele Anfragen, bitte versuchen Sie es morgen erneut." },
-        { status: 429, headers: { "x-ratelimit-limit": "5", "x-ratelimit-remaining": "0", "retry-after": "86400" } },
+        { status: 429, headers: { "x-ratelimit-limit": String(maxPerDay), "x-ratelimit-remaining": "0", "retry-after": "86400" } },
       );
     }
 
@@ -132,7 +135,7 @@ export async function POST(req: NextRequest) {
     if (!force) {
       const cached = await getReportByDomain(dns.domain);
       if (cached) {
-        return json(buildV2Phase1(cached), { headers: { "x-ratelimit-limit": "5", "x-ratelimit-remaining": String(rateLimit.remaining) } });
+        return json(buildV2Phase1(cached), { headers: { "x-ratelimit-limit": String(maxPerDay), "x-ratelimit-remaining": String(rateLimit.remaining) } });
       }
     }
 
