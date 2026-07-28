@@ -111,6 +111,7 @@ export async function createReport(data: {
         subpages: data.subpages ?? [],
         ai_crawler_facts: data.aiCrawlerFacts ?? null,
         timings: data.timings ?? null,
+        expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
       })
       .select("id, short_slug")
       .single();
@@ -278,7 +279,7 @@ export async function touchReport(id: string): Promise<void> {
   if (!sb) return;
   await sb
     .from("geo_check_reports")
-    .update({ expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() })
+    .update({ expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() })
     .eq("id", id);
 }
 

@@ -73,6 +73,23 @@ export async function GET(
     const breakdown = report.composite_breakdown || [];
     const score = report.composite_score ?? report.overall_score ?? 0;
 
+    // Score label for frontend color coding
+    const scoreLabel = score < 40 ? "Schwach" : score <= 70 ? "Mittel" : "Gut";
+
+    // Vertical in German (frontend dropdown labels)
+    const VERTICAL_DE: Record<string, string> = {
+      "Wine": "Wein", "Gourmet Food": "Feinkost", "Craft Beer": "Craft Beer",
+      "Fitness": "Fitness", "Restaurants": "Gastronomie",
+      "Beauty & Wellness": "Beauty & Wellness", "Legal": "Recht",
+      "Finance": "Finanzen", "Healthcare": "Gesundheit",
+      "Real Estate": "Immobilien", "Home Services": "Handwerk & Hausservice",
+      "AI & SaaS": "KI & SaaS", "Other": "Sonstiges",
+    };
+    const verticalDE = VERTICAL_DE[report.vertical || "Other"] || report.vertical || "";
+
+    // Date from createdAt
+    const date = report.created_at ? report.created_at.split("T")[0] : "";
+
     const response: Record<string, unknown> = {
       reportId: report.id,
       shortSlug: report.short_slug,
@@ -107,7 +124,12 @@ export async function GET(
       zusammenfassung,
       breakdown,
       score,
-      technicalScore: report.overall_score ?? 0, // Phase 1 technical score (separate from composite)
+      scoreLabel,
+      brand: report.brand_name || "",
+      vertical: verticalDE,
+      region: report.region || "",
+      date,
+      technicalScore: report.overall_score ?? 0,
       // Gate status (informational only)
       gated: false,
       emailCollected: report.unlocked,
