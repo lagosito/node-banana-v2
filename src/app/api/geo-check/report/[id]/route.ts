@@ -71,7 +71,7 @@ export async function GET(
     }));
     const zusammenfassung = report.visibility_summary || "";
     const breakdown = report.composite_breakdown || [];
-    const score = report.composite_score ?? report.overall_score ?? 0;
+    const score = (report.composite_score ?? 0) > 0 ? report.composite_score! : report.overall_score ?? 0;
 
     // Score label for frontend color coding
     const scoreLabel = score < 40 ? "Schwach" : score <= 70 ? "Mittel" : "Gut";
@@ -114,7 +114,7 @@ export async function GET(
       topCompetitors: report.top_competitors || [],
       visibilitySummary: report.visibility_summary || null,
       // New v2 fields
-      compositeScore: report.composite_score ?? null,
+      compositeScore: (report.composite_score ?? 0) > 0 ? report.composite_score : null,
       compositeBreakdown: report.composite_breakdown || null,
       analysisDetails: report.analysis_details || null,
       // Compatibility fields for Lovable frontend (GEO-Audit format)
