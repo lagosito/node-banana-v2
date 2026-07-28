@@ -199,7 +199,6 @@ export function extractBusinessDescriptor(
   ]);
 
   // ─── Build brand/domain guard tokens ───
-  console.log(`[Guard-input] title="${title}" desc="${(description||"").slice(0,80)}" domain="${domain||""}" brand="${brandName||""}"`);
   const guardTokens: string[] = [];
   if (brandName) {
     const core = normalizeForGuard(brandName);
