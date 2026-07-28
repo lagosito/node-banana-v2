@@ -22,8 +22,6 @@ export const VALID_VERTICALS = [
 export type ValidVertical = (typeof VALID_VERTICALS)[number];
 
 // ─── German→English backward compat map ───
-// Old reports in Supabase have verticals in German. Map them to the new
-// English tokens so they don't break. Reverse-map kept for display.
 
 const DE_TO_EN: Record<string, ValidVertical> = {
   Wein: "Wine",
@@ -34,44 +32,241 @@ const DE_TO_EN: Record<string, ValidVertical> = {
 };
 
 export function normalizeVertical(raw: string): ValidVertical {
-  // Already English valid token
   if ((VALID_VERTICALS as readonly string[]).includes(raw)) {
     return raw as ValidVertical;
   }
-  // German legacy token → English
   const mapped = DE_TO_EN[raw];
   if (mapped) return mapped;
-  // Unknown → Other
   return "Other";
 }
 
 export function isValidVertical(vertical: string): boolean {
-  // Accept both English and German legacy tokens
   return (
     (VALID_VERTICALS as readonly string[]).includes(vertical) ||
     vertical in DE_TO_EN
   );
 }
 
-// ─── Prompts (shared between quick, full, and llm endpoints) ───
+// ─── Prompt Library (migrated from Airtable 2026-07-28) ───
+// 12 verticals × 12 prompts each, 4 intents: Empfehlung, Kauf, Vergleich, Info
+// Variables: {region} and {product} (standardized from [REGION])
 
-export const QUICK_PROMPTS = [
-  "Which {vertical} in {region} would you recommend?",
-  "What are the best {vertical} in {region}?",
-  "Which {vertical} in {region} are particularly popular?",
-  "What are top-rated {vertical} options in {region}?",
-  "Can you suggest reliable {vertical} in {region}?",
-  "Which {vertical} in {region} have the best reputation?",
-];
+export const PROMPTS_BY_VERTICAL: Record<string, {text: string; intent: string; language: string}[]> = {
+  "AI & SaaS": [
+    { text: "What features should a modern CRM tool have?", intent: "Info", language: "EN" },
+    { text: "Compare the best AI tools for content creation.", intent: "Vergleich", language: "EN" },
+    { text: "What makes a good AI marketing tool?", intent: "Info", language: "EN" },
+    { text: "Where can I sign up for a CRM tool with a free trial?", intent: "Kauf", language: "EN" },
+    { text: "Which CRM tool would you recommend for small businesses in {region}?", intent: "Empfehlung", language: "EN" },
+    { text: "What's the best AI software for marketing automation?", intent: "Empfehlung", language: "EN" },
+    { text: "How do I easily switch from an old CRM to a new SaaS tool?", intent: "Kauf", language: "EN" },
+    { text: "What sets the leading CRM providers apart?", intent: "Vergleich", language: "EN" },
+    { text: "Which SaaS tool offers the best value for startups?", intent: "Vergleich", language: "EN" },
+    { text: "What does an AI-powered marketing tool cost per month?", intent: "Kauf", language: "EN" },
+    { text: "What should I look for when choosing a SaaS solution?", intent: "Info", language: "EN" },
+    { text: "Can you recommend a good SaaS tool for project management?", intent: "Empfehlung", language: "EN" },
+  ],
+  "Beauty & Wellness": [
+    { text: "Ich suche ein gutes Geschäft für {product} in {region}. Was empfiehlst du?", intent: "Empfehlung", language: "DE" },
+    { text: "Ich suche einen guten Nagelstudio in {region}. Was empfiehlst du?", intent: "Empfehlung", language: "DE" },
+    { text: "Welche Kosmetikstudios in {region} kannst du empfehlen?", intent: "Empfehlung", language: "DE" },
+    { text: "Vergleiche die besten Drogerieketten in {region}.", intent: "Vergleich", language: "DE" },
+    { text: "Welche Kosmetikstudios in {region} haben die besten Bewertungen für Gesichtspflege?", intent: "Vergleich", language: "DE" },
+    { text: "Wo kann ich hochwertige Kosmetik- und Pflegeprodukte in {region} online bestellen?", intent: "Kauf", language: "DE" },
+    { text: "Gibt es in {region} Beauty-Studios mit spezialisierten Anti-Aging-Behandlungen?", intent: "Info", language: "DE" },
+    { text: "Welche Drogerie in {region} hat die besten Bewertungen für Naturkosmetik?", intent: "Vergleich", language: "DE" },
+    { text: "Gibt es in {region} Beauty-Fachgeschäfte mit eigenem Online-Shop?", intent: "Info", language: "DE" },
+    { text: "Vergleiche die besten Wellness- und Spacentren in {region}.", intent: "Vergleich", language: "DE" },
+    { text: "Welche Drogerien oder Beauty-Shops in {region} kannst du empfehlen?", intent: "Empfehlung", language: "DE" },
+    { text: "Wo gibt es in {region} gute Friseursalons mit Online-Terminbuchung?", intent: "Kauf", language: "DE" },
+  ],
+  "Craft Beer": [
+    { text: "Ich suche ein gutes {product} aus Deutschland. Was empfiehlst du?", intent: "Empfehlung", language: "DE" },
+    { text: "Vergleiche die bekanntesten Craft-Beer-Marken aus {region}.", intent: "Vergleich", language: "DE" },
+    { text: "Was sind die besten kleinen Brauereien in {region}?", intent: "Empfehlung", language: "DE" },
+    { text: "Welche neuen Brauereien aus {region} sollte man 2026 kennen?", intent: "Info", language: "DE" },
+    { text: "Welche Craft-Beer-Brauereien aus {region} kannst du empfehlen?", intent: "Empfehlung", language: "DE" },
+    { text: "Welche Brauerei aus {region} hat die besten Bewertungen?", intent: "Vergleich", language: "DE" },
+    { text: "Welche deutschen Craft-Brauereien liefern direkt an Endkunden?", intent: "Kauf", language: "DE" },
+    { text: "Welche Craft-Beer-Brauereien aus {region} sind auf Social Media aktiv?", intent: "Info", language: "DE" },
+    { text: "Craft Beer als Geschenk: welche Brauereien bieten Probierpakete an?", intent: "Kauf", language: "DE" },
+    { text: "Gibt es Brauereien in {region} mit Taproom oder Brauereiführung?", intent: "Info", language: "DE" },
+    { text: "Wo finde ich alkoholfreies Craft Beer von deutschen Brauereien?", intent: "Kauf", language: "DE" },
+    { text: "Wo kann ich Craft Beer aus {region} online kaufen?", intent: "Kauf", language: "DE" },
+  ],
+  "Finance": [
+    { text: "What sets the leading financial advisory firms in {region} apart?", intent: "Vergleich", language: "EN" },
+    { text: "Which financial advisor in {region} has the best client reviews?", intent: "Vergleich", language: "EN" },
+    { text: "What services does a typical financial advisory firm in {region} offer?", intent: "Info", language: "EN" },
+    { text: "Who is the best independent wealth manager in {region}?", intent: "Empfehlung", language: "EN" },
+    { text: "What should I look for when choosing a financial advisor?", intent: "Info", language: "EN" },
+    { text: "Where can I find a short-notice appointment for financial planning in {region}?", intent: "Kauf", language: "EN" },
+    { text: "Compare the best wealth management providers in {region}.", intent: "Vergleich", language: "EN" },
+    { text: "How do I book an appointment with a financial advisor in {region}?", intent: "Kauf", language: "EN" },
+    { text: "What does independent financial advice cost in {region}?", intent: "Kauf", language: "EN" },
+    { text: "Which financial advisor in {region} would you recommend for retirement planning?", intent: "Empfehlung", language: "EN" },
+    { text: "Can you recommend a good tax advisor in {region}?", intent: "Empfehlung", language: "EN" },
+    { text: "What makes a good wealth management firm?", intent: "Info", language: "EN" },
+  ],
+  "Fitness": [
+    { text: "Vergleiche deutsche Supplement-Marken für {product}.", intent: "Vergleich", language: "DE" },
+    { text: "Wo gibt es in {region} gute Kurse für {product}?", intent: "Empfehlung", language: "DE" },
+    { text: "Welche Supplements für {product} sind empfehlenswert?", intent: "Empfehlung", language: "DE" },
+    { text: "Wo kann ich hochwertige Supplements von deutschen Marken kaufen?", intent: "Kauf", language: "DE" },
+    { text: "Welche Fitness-Marken aus Deutschland sollte man kennen?", intent: "Info", language: "DE" },
+    { text: "Was ist das beste Fitnessstudio in {region} für Anfänger?", intent: "Empfehlung", language: "DE" },
+    { text: "Welches Fitnessstudio in {region} hat die besten Bewertungen?", intent: "Vergleich", language: "DE" },
+    { text: "Welche Fitnessstudios in {region} kannst du empfehlen?", intent: "Empfehlung", language: "DE" },
+    { text: "Gibt es in {region} Boutique-Studios oder CrossFit-Boxen?", intent: "Info", language: "DE" },
+    { text: "Ich suche ein Gym mit Personal Training in {region}. Was empfiehlst du?", intent: "Empfehlung", language: "DE" },
+    { text: "Vergleiche die Fitnessstudios in {region}.", intent: "Vergleich", language: "DE" },
+    { text: "Was kostet eine Mitgliedschaft im Fitnessstudio in {region}?", intent: "Info", language: "DE" },
+  ],
+  "Gourmet Food": [
+    { text: "Welche Food-Startups aus {region} sollte man kennen?", intent: "Info", language: "DE" },
+    { text: "Gibt es Feinkost-Manufakturen in {region} mit eigenem Online-Shop?", intent: "Info", language: "DE" },
+    { text: "Ich suche ein besonderes Feinkost-Geschenk aus {region}. Was empfiehlst du?", intent: "Kauf", language: "DE" },
+    { text: "Was sind gute Alternativen zu Supermarkt-{product}?", intent: "Vergleich", language: "DE" },
+    { text: "Wo bekomme ich {product} in Premium-Qualität, direkt vom Erzeuger?", intent: "Kauf", language: "DE" },
+    { text: "Vergleiche die bekanntesten Anbieter für {product} in Deutschland.", intent: "Vergleich", language: "DE" },
+    { text: "Welcher Feinkost-Händler aus {region} hat die besten Bewertungen?", intent: "Vergleich", language: "DE" },
+    { text: "Welche Delikatessen-Shops liefern deutschlandweit?", intent: "Kauf", language: "DE" },
+    { text: "Was sind die besten kleinen Manufakturen für {product} in Deutschland?", intent: "Empfehlung", language: "DE" },
+    { text: "Bio-{product}: welche Hersteller sind empfehlenswert?", intent: "Empfehlung", language: "DE" },
+    { text: "Wo kann ich hochwertiges {product} online bestellen?", intent: "Kauf", language: "DE" },
+    { text: "Welche Feinkost-Anbieter aus {region} kannst du empfehlen?", intent: "Empfehlung", language: "DE" },
+  ],
+  "Healthcare": [
+    { text: "Which dentist in {region} would you recommend?", intent: "Empfehlung", language: "EN" },
+    { text: "What should I look for when choosing a medical practice?", intent: "Info", language: "EN" },
+    { text: "How do I get a short-notice appointment with a doctor in {region}?", intent: "Kauf", language: "EN" },
+    { text: "What does a check-up cost in {region}?", intent: "Kauf", language: "EN" },
+    { text: "What sets the leading medical practices in {region} apart?", intent: "Vergleich", language: "EN" },
+    { text: "What services does a typical dermatology practice in {region} offer?", intent: "Info", language: "EN" },
+    { text: "Where can I find a practice in {region} that also bills private insurance?", intent: "Kauf", language: "EN" },
+    { text: "Who is the best dermatologist in {region}?", intent: "Empfehlung", language: "EN" },
+    { text: "Can you recommend a good physiotherapy practice in {region}?", intent: "Empfehlung", language: "EN" },
+    { text: "Compare the top-rated dentists in {region}.", intent: "Vergleich", language: "EN" },
+    { text: "What makes a good dental practice?", intent: "Info", language: "EN" },
+    { text: "Which practice in {region} has the shortest wait times?", intent: "Vergleich", language: "EN" },
+  ],
+  "Home Services": [
+    { text: "Where can I find a home service company in {region} that's available right away?", intent: "Kauf", language: "EN" },
+    { text: "What should I look for when choosing a home service company?", intent: "Info", language: "EN" },
+    { text: "Who is the best electrician in {region}?", intent: "Empfehlung", language: "EN" },
+    { text: "Which company in {region} has the fastest emergency response time?", intent: "Vergleich", language: "EN" },
+    { text: "What services does a typical electrical company in {region} offer?", intent: "Info", language: "EN" },
+    { text: "Compare the top-rated electricians in {region}.", intent: "Vergleich", language: "EN" },
+    { text: "What does an emergency electrician cost in {region}?", intent: "Kauf", language: "EN" },
+    { text: "How do I get a contractor on short notice in {region}?", intent: "Kauf", language: "EN" },
+    { text: "Can you recommend a good plumbing company in {region}?", intent: "Empfehlung", language: "EN" },
+    { text: "What makes a good plumbing company?", intent: "Info", language: "EN" },
+    { text: "Which contractor in {region} would you recommend for a bathroom renovation?", intent: "Empfehlung", language: "EN" },
+    { text: "What sets the leading home service companies in {region} apart?", intent: "Vergleich", language: "EN" },
+  ],
+  "Legal": [
+    { text: "What practice areas does a typical law firm in {region} cover?", intent: "Info", language: "EN" },
+    { text: "Which law firm in {region} would you recommend for estate planning?", intent: "Empfehlung", language: "EN" },
+    { text: "How do I book an initial consultation with a lawyer in {region}?", intent: "Kauf", language: "EN" },
+    { text: "What should I look for when choosing a lawyer in {region}?", intent: "Info", language: "EN" },
+    { text: "Where can I find a lawyer in {region} who is available right away?", intent: "Kauf", language: "EN" },
+    { text: "What makes a good law firm?", intent: "Info", language: "EN" },
+    { text: "Which law firm in {region} has the best reviews for traffic law?", intent: "Vergleich", language: "EN" },
+    { text: "What does a legal consultation cost in {region}?", intent: "Kauf", language: "EN" },
+    { text: "Compare the most well-known firms for tenant law in {region}.", intent: "Vergleich", language: "EN" },
+    { text: "Can you recommend a good family law firm in {region}?", intent: "Empfehlung", language: "EN" },
+    { text: "Who is the best employment lawyer in {region}?", intent: "Empfehlung", language: "EN" },
+    { text: "What are the differences between the leading law firms in {region}?", intent: "Vergleich", language: "EN" },
+  ],
+  "Real Estate": [
+    { text: "What makes a good real estate agent?", intent: "Info", language: "EN" },
+    { text: "What should I look for when choosing a real estate agent?", intent: "Info", language: "EN" },
+    { text: "What services does a typical agent in {region} offer?", intent: "Info", language: "EN" },
+    { text: "Where can I find an agent in {region} for a quick property valuation?", intent: "Kauf", language: "EN" },
+    { text: "What does a real estate agent cost in {region}?", intent: "Kauf", language: "EN" },
+    { text: "Which agent in {region} sells properties the fastest?", intent: "Vergleich", language: "EN" },
+    { text: "Can you recommend a good commercial real estate agent in {region}?", intent: "Empfehlung", language: "EN" },
+    { text: "Who is the best agent for selling apartments in {region}?", intent: "Empfehlung", language: "EN" },
+    { text: "Which real estate agent in {region} would you recommend?", intent: "Empfehlung", language: "EN" },
+    { text: "Compare the top-rated agents in {region}.", intent: "Vergleich", language: "EN" },
+    { text: "What sets the leading real estate agents in {region} apart?", intent: "Vergleich", language: "EN" },
+    { text: "How do I hire an agent to sell my house in {region}?", intent: "Kauf", language: "EN" },
+  ],
+  "Restaurants": [
+    { text: "Wo gibt es in {region} gutes Frühstück oder Brunch?", intent: "Empfehlung", language: "DE" },
+    { text: "Welches Café in {region} hat die besten Bewertungen?", intent: "Vergleich", language: "DE" },
+    { text: "Gibt es in {region} Restaurants mit regionaler Küche und eigener Website?", intent: "Info", language: "DE" },
+    { text: "Was ist das beste Restaurant für {product} in {region}?", intent: "Empfehlung", language: "DE" },
+    { text: "Vergleiche die besten Restaurants für {product} in {region}.", intent: "Vergleich", language: "DE" },
+    { text: "Welche neuen Restaurants in {region} sollte man 2026 ausprobieren?", intent: "Info", language: "DE" },
+    { text: "Welche Bäckerei in {region} ist empfehlenswert?", intent: "Empfehlung", language: "DE" },
+    { text: "Wo kann ich in {region} einen Tisch für eine Gruppe reservieren?", intent: "Info", language: "DE" },
+    { text: "Ich suche ein Restaurant in {region} für ein besonderes Abendessen. Ideen?", intent: "Empfehlung", language: "DE" },
+    { text: "Catering in {region}: welche Anbieter sind empfehlenswert?", intent: "Empfehlung", language: "DE" },
+    { text: "Welche Restaurants in {region} kannst du empfehlen?", intent: "Empfehlung", language: "DE" },
+    { text: "Welche Restaurants in {region} bieten Lieferung oder Abholung an?", intent: "Kauf", language: "DE" },
+  ],
+  "Wine": [
+    { text: "Welche Weingüter aus {region} sind auf Instagram aktiv und einen Blick wert?", intent: "Info", language: "DE" },
+    { text: "Ich möchte Wein als Geschenk kaufen, regional aus {region}. Ideen?", intent: "Kauf", language: "DE" },
+    { text: "Vergleiche die bekanntesten Weingüter aus {region}.", intent: "Vergleich", language: "DE" },
+    { text: "Welche deutschen Weingüter liefern direkt an Endkunden?", intent: "Kauf", language: "DE" },
+    { text: "Welcher Winzer aus {region} hat die besten Bewertungen?", intent: "Vergleich", language: "DE" },
+    { text: "Ich suche ein Weingut in {region} für eine Weinprobe. Was empfiehlst du?", intent: "Empfehlung", language: "DE" },
+    { text: "Welche Weingüter aus {region} kannst du empfehlen?", intent: "Empfehlung", language: "DE" },
+    { text: "Bio-Wein aus {region}: welche Erzeuger sind empfehlenswert?", intent: "Empfehlung", language: "DE" },
+    { text: "Was ist ein gutes Weingut für {product} unter 20 Euro?", intent: "Kauf", language: "DE" },
+    { text: "Wo kann ich guten {product} aus {region} online kaufen?", intent: "Kauf", language: "DE" },
+    { text: "Was sind die besten kleinen Weingüter in {region}?", intent: "Empfehlung", language: "DE" },
+    { text: "Gibt es Weingüter in {region} mit eigenem Online-Shop?", intent: "Info", language: "DE" },
+  ],
+};
 
-export const FULL_PROMPTS = [
-  "Which {vertical} in {region} would you recommend?",
-  "What are the best {vertical} in {region}?",
-  "Which {vertical} in {region} are particularly popular?",
-];
+/**
+ * Select 6 prompts from the vertical for a GEO-Check run.
+ * Priority:
+ * 1. Empfehlung or Vergleich with {region} placeholder
+ * 2. Any intent with {region} placeholder
+ * 3. Remaining prompts (no placeholder) to fill up to 6
+ * Never pick prompts without any placeholder as first priority.
+ */
+export function selectCheckPrompts(vertical: string, count = 6): {text: string; intent: string; language: string}[] {
+  const prompts = PROMPTS_BY_VERTICAL[vertical];
+  if (!prompts || prompts.length === 0) return [];
 
+  // Tier 1: Empfehlung/Vergleich with {region}
+  const tier1 = prompts.filter(p =>
+    (p.intent === "Empfehlung" || p.intent === "Vergleich") &&
+    p.text.includes("{region}")
+  );
+
+  // Tier 2: Any intent with {region}
+  const tier2 = prompts.filter(p =>
+    p.text.includes("{region}") &&
+    !tier1.includes(p)
+  );
+
+  // Tier 3: Rest (no {region})
+  const tier3 = prompts.filter(p =>
+    !tier1.includes(p) && !tier2.includes(p)
+  );
+
+  const selected = [...tier1, ...tier2, ...tier3].slice(0, count);
+  return selected;
+}
+
+/** Build a prompt string by replacing placeholders */
 export function buildPrompt(template: string, vertical: string, region: string): string {
-  return template.replace(/{vertical}/g, vertical).replace(/{region}/g, region);
+  return template
+    .replace(/{vertical}/g, vertical)
+    .replace(/{region}/g, region)
+    .replace(/{product}/g, vertical);
+}
+
+/** Build prompts for the Check from selected prompts */
+export function buildCheckPrompts(vertical: string, region: string): string[] {
+  const selected = selectCheckPrompts(vertical);
+  return selected.map(p => buildPrompt(p.text, vertical, region));
 }
 
 // ─── Vertical inference for "Other" ───
@@ -91,9 +286,6 @@ const VERTICAL_KEYWORDS: [string, ValidVertical][] = [
   ["software", "AI & SaaS"], ["saas", "AI & SaaS"],
 ];
 
-/**
- * Infer a real vertical from page title when user selected "Other".
- */
 export function inferVerticalFromTitle(title: string): ValidVertical {
   const lower = title.toLowerCase();
   for (const [keyword, vertical] of VERTICAL_KEYWORDS) {
@@ -102,7 +294,6 @@ export function inferVerticalFromTitle(title: string): ValidVertical {
   return "Other";
 }
 
-/** Resolve vertical: if "Other", infer from title. Otherwise return as-is. */
 export function resolveVertical(vertical: string, title?: string): ValidVertical {
   if (vertical === "Other" && title) {
     return inferVerticalFromTitle(title);
@@ -112,7 +303,7 @@ export function resolveVertical(vertical: string, title?: string): ValidVertical
 
 // ─── Other: Descriptor-based prompts ───
 
-/** 6 German templates for "Other" vertical — uses "Anbieter für" to avoid pluralization issues */
+/** 6 German templates for "Other" vertical */
 export const OTHER_TEMPLATES = [
   "Welche Anbieter für {descriptor} in {region} kannst du empfehlen?",
   "Ich suche {descriptor} in {region}. Was empfiehlst du?",
@@ -122,7 +313,6 @@ export const OTHER_TEMPLATES = [
   "Gibt es in {region} Anbieter für {descriptor} mit eigenem Online-Shop?",
 ];
 
-/** Build prompts for "Other" vertical using descriptor extracted from crawl */
 export function buildOtherPrompts(descriptor: string, region: string): string[] {
   return OTHER_TEMPLATES.map((t) =>
     t.replace(/{descriptor}/g, descriptor).replace(/{region}/g, region),

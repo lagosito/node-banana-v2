@@ -21,9 +21,10 @@ import {
   type ValidVertical,
   isValidVertical,
   normalizeVertical,
-  QUICK_PROMPTS,
-  FULL_PROMPTS,
+  PROMPTS_BY_VERTICAL,
+  selectCheckPrompts,
   buildPrompt,
+  buildCheckPrompts,
   resolveVertical,
   inferVerticalFromTitle,
   OTHER_TEMPLATES,
@@ -35,9 +36,10 @@ export {
   type ValidVertical,
   isValidVertical,
   normalizeVertical,
-  QUICK_PROMPTS,
-  FULL_PROMPTS,
+  PROMPTS_BY_VERTICAL,
+  selectCheckPrompts,
   buildPrompt,
+  buildCheckPrompts,
   resolveVertical,
   inferVerticalFromTitle,
   OTHER_TEMPLATES,
@@ -314,7 +316,7 @@ export function buildBrandAliases(domain: string, brandName: string): string[] {
 
 // ─── Quick Check (2 prompts × 2 providers = 4 runs, analyzed by Haiku) ───
 
-// QUICK_PROMPTS imported from ./config
+// selectCheckPrompts imported from ./config
 
 export interface QuickRunResult {
   provider: string;
@@ -356,10 +358,10 @@ export async function runQuickCheck(
   // Phase 1: Call all providers with all prompts
   const providerResponses: { promptId: string; text: string; provider: string; prompt: string }[] = [];
 
-  for (const promptTemplate of QUICK_PROMPTS) {
-    const prompt = promptTemplate
-      .replace(/{vertical}/g, vertical)
-      .replace(/{region}/g, region);
+  // Select 6 prompts from the vertical's prompt library
+  const selected = selectCheckPrompts(vertical);
+  for (const p of selected) {
+    const prompt = buildPrompt(p.text, vertical, region);
 
     for (const provider of activeProviders) {
       try {
@@ -754,7 +756,7 @@ function buildEmailHtml(params: {
 
 // ─── Full Check (3 prompts × 2 providers, reuses quick runs) ───
 
-// FULL_PROMPTS imported from ./config
+// selectCheckPrompts imported from ./config
 
 export interface FullCheckResult {
   brandName: string;
@@ -799,8 +801,10 @@ export async function runFullCheck(
 
   // Determine which prompts still need to run
   const existingPrompts = new Set(existingRuns?.map((r) => r.prompt) || []);
-  const promptsToRun = FULL_PROMPTS
-    .map((p) => p.replace(/{vertical}/g, vertical).replace(/{region}/g, region))
+  // Use all 12 prompts from the vertical for full check
+  const allPrompts = selectCheckPrompts(vertical, 12);
+  const promptsToRun = allPrompts
+    .map((p) => buildPrompt(p.text, vertical, region))
     .filter((p) => !existingPrompts.has(p));
 
   // Phase 1: Call remaining providers

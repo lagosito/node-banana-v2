@@ -3,7 +3,7 @@
 // Body: { reportId: string }
 
 import { NextRequest, NextResponse } from "next/server";
-import { fetchBrandName, normalizeVertical, QUICK_PROMPTS, buildPrompt, buildBrandAliases, extractCoreBrand, fetchPageTitle, buildOtherPrompts, extractBusinessDescriptor } from "@/lib/geo-check";
+import { fetchBrandName, normalizeVertical, buildCheckPrompts, buildBrandAliases, extractCoreBrand, fetchPageTitle, buildOtherPrompts, extractBusinessDescriptor } from "@/lib/geo-check";
 import { analyzeResponseBatch } from "@/lib/geo-audit/analyzer";
 import {
   getReport,
@@ -227,9 +227,9 @@ export async function POST(req: NextRequest) {
       prompts = buildOtherPrompts(descriptor, region);
       verticalResolved = `Other (descriptor: ${descriptor})`;
     } else {
-      // Standard vertical: use curated prompts from Prompt Library
+      // Standard vertical: use curated prompts from Prompt Library (6 of 12)
       const vertical = normalizeVertical(reportVertical);
-      prompts = QUICK_PROMPTS.map((t) => buildPrompt(t, vertical, region));
+      prompts = buildCheckPrompts(vertical, region);
     }
 
     // Log prompts for auditability (C1)
