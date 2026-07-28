@@ -122,7 +122,7 @@ export async function POST(req: NextRequest) {
     const allowlist = (process.env.GEO_RATE_LIMIT_ALLOWLIST || "").split(",").map(s => s.trim()).filter(Boolean);
     const isAllowlisted = allowlist.includes(ip);
     const rateLimit = (isBypassed || isAllowlisted)
-      ? { allowed: true, remaining: maxPerDay }
+      ? { allowed: true, remaining: 999 }
       : await checkRateLimitDb(ip, maxPerDay);
     if (!rateLimit.allowed) {
       return json(
@@ -182,6 +182,8 @@ export async function POST(req: NextRequest) {
     for (const [key, cat] of Object.entries(scores.categoryScores)) {
       for (const check of cat.checks) {
         if (seenCheckIds.has(check.id)) continue;
+        // Skip ai-vis-placeholder — it's a pending marker, not a finding
+        if (check.id === "ai-vis-placeholder") continue;
         seenCheckIds.add(check.id);
         findings.push({
           type: check.passed ? "recommendation" : "finding",

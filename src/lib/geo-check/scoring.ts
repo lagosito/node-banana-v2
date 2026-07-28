@@ -155,7 +155,7 @@ function scoreAiReadiness(facts: VerifiedFacts, floor: number): CategoryScore {
 
   // Schema
   const schema = facts.schema.jsonLdValid > 0;
-  checks.push({ id: "ai-schema", label: "Strukturierte Daten (JSON-LD)", passed: schema, weight: 25, detail: `${facts.schema.jsonLdValid} gueltige Bloecke, Typen: ${facts.schema.types.join(", ") || "keine"}`, evidence: facts.schema.evidence.join("; ") || "none" });
+  checks.push({ id: "ai-schema", label: "Strukturierte Daten (JSON-LD)", passed: schema, weight: 25, detail: `${facts.schema.jsonLdValid} gültige Blöcke, Typen: ${facts.schema.types.join(", ") || "keine"}`, evidence: facts.schema.evidence.join("; ") || "none" });
 
   // Question headings
   const questions = facts.content.questionHeadings.length;
@@ -224,11 +224,11 @@ function scoreTrust(facts: VerifiedFacts, floor: number): CategoryScore {
 
   // Impressum content validation
   const impressumValid = facts.eeat.impressumUrl !== null;
-  checks.push({ id: "trust-impressum", label: "Impressum gueltig", passed: impressumValid, weight: 30, detail: impressumValid ? `URL: ${facts.eeat.impressumUrl}` : "Kein gueltiges Impressum", evidence: facts.eeat.impressumUrl || "none" });
+  checks.push({ id: "trust-impressum", label: "Impressum gültig", passed: impressumValid, weight: 30, detail: impressumValid ? `URL: ${facts.eeat.impressumUrl}` : "Kein gültiges Impressum", evidence: facts.eeat.impressumUrl || "none" });
 
   // Discovery mode
   const discoveryOk = facts.eeat.discovery === "link";
-  checks.push({ id: "trust-discovery", label: "Rechtliche Seiten per Link gefunden", passed: discoveryOk, weight: 30, detail: `Discovery: ${facts.eeat.discovery}`, evidence: facts.eeat.discovery === "link" ? "Alle Seiten im Navigationssystem gefunden" : facts.eeat.discovery === "guess" ? "Teilweise geraten (geringere Qualitaet)" : "Nichts gefunden" });
+  checks.push({ id: "trust-discovery", label: "Rechtliche Seiten per Link gefunden", passed: discoveryOk, weight: 30, detail: `Discovery: ${facts.eeat.discovery}`, evidence: facts.eeat.discovery === "link" ? "Alle Seiten im Navigationssystem gefunden" : facts.eeat.discovery === "guess" ? "Teilweise geraten (geringere Qualität)" : "Nichts gefunden" });
 
   const raw = weightedAverage(checks);
   const score = applyFloor(raw, floor);
@@ -322,7 +322,7 @@ function scoreAiVisibility(_facts: VerifiedFacts, floor: number): CategoryScore 
   // Placeholder: aiVisibility comes from the runner (mention rate from Prompt Library)
   // Score is set externally after LLM queries complete
   const checks: ScoreCheck[] = [
-    { id: "ai-vis-placeholder", label: "KI-Sichtbarkeit", passed: false, weight: 100, detail: "Wird nach KI-Abfragen berechnet", evidence: "Noch nicht ausgefuehrt" },
+    { id: "ai-vis-placeholder", label: "KI-Sichtbarkeit", passed: false, weight: 100, detail: "Wird nach KI-Abfragen berechnet", evidence: "Noch nicht ausgeführt" },
   ];
   return { score: 0, checks };
 }
@@ -335,11 +335,11 @@ function scoreCitability(facts: VerifiedFacts): CitabilityScore {
 
   // Machine Readiness (0-35)
   const schemaValid = facts.schema.jsonLdValid > 0;
-  if (schemaValid) { breakdown.machineReadable += 10; checks.push({ id: "cit-schema", label: "Gueltige Datenstruktur", passed: true, weight: 10, detail: `${facts.schema.jsonLdValid} JSON-LD Bloecke`, evidence: facts.schema.types.join(", ") }); }
-  else { checks.push({ id: "cit-schema", label: "Gueltige Datenstruktur", passed: false, weight: 10, detail: "Kein gueltiges JSON-LD", evidence: `${facts.schema.jsonLdInvalid} ungueltige Bloecke` }); }
+  if (schemaValid) { breakdown.machineReadable += 10; checks.push({ id: "cit-schema", label: "Gültige Datenstruktur", passed: true, weight: 10, detail: `${facts.schema.jsonLdValid} JSON-LD Blöcke`, evidence: facts.schema.types.join(", ") }); }
+  else { checks.push({ id: "cit-schema", label: "Gültige Datenstruktur", passed: false, weight: 10, detail: "Kein gültiges JSON-LD", evidence: `${facts.schema.jsonLdInvalid} ungültige Blöcke` }); }
 
-  if (facts.schema.hasOrganization && facts.schema.organizationComplete.complete) { breakdown.machineReadable += 10; checks.push({ id: "cit-org", label: "Organization vollstaendig", passed: true, weight: 10, detail: "name+url+logo+sameAs vorhanden", evidence: `name=${facts.schema.organizationComplete.hasName} url=${facts.schema.organizationComplete.hasUrl} logo=${facts.schema.organizationComplete.hasLogo} sameAs=${facts.schema.organizationComplete.hasSameAs}` }); }
-  else { checks.push({ id: "cit-org", label: "Organization vollstaendig", passed: false, weight: 10, detail: "Organization unvollstaendig oder fehlend", evidence: `has=${facts.schema.hasOrganization} complete=${facts.schema.organizationComplete.complete}` }); }
+  if (facts.schema.hasOrganization && facts.schema.organizationComplete.complete) { breakdown.machineReadable += 10; checks.push({ id: "cit-org", label: "Organization vollständig", passed: true, weight: 10, detail: "name+url+logo+sameAs vorhanden", evidence: `name=${facts.schema.organizationComplete.hasName} url=${facts.schema.organizationComplete.hasUrl} logo=${facts.schema.organizationComplete.hasLogo} sameAs=${facts.schema.organizationComplete.hasSameAs}` }); }
+  else { checks.push({ id: "cit-org", label: "Organization vollständig", passed: false, weight: 10, detail: "Organization unvollständig oder fehlend", evidence: `has=${facts.schema.hasOrganization} complete=${facts.schema.organizationComplete.complete}` }); }
 
   if (facts.schema.hasFAQ || facts.content.hasFaqSection) { breakdown.machineReadable += 5; checks.push({ id: "cit-faq-struct", label: "FAQ strukturiert", passed: true, weight: 5, detail: "FAQ in JSON-LD oder HTML-Sektion", evidence: `hasFAQ=${facts.schema.hasFAQ} hasFaqSection=${facts.content.hasFaqSection}` }); }
   else { checks.push({ id: "cit-faq-struct", label: "FAQ strukturiert", passed: false, weight: 5, detail: "Keine FAQ", evidence: "none" }); }

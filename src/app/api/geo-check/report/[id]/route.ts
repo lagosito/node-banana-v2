@@ -63,12 +63,8 @@ export async function GET(
       }
       citedDomains.push(...domainSet);
     }
-    const findings = (report.top_problems || []).map((p: any, i: number) => ({
-      category: "GEO-Check",
-      finding: p.title || "",
-      recommendation: p.impact || "",
-      priority: i + 1,
-    }));
+    // Use structured findings from LLM phase (if available)
+    const findings = (report.recommendations || []).filter((f: any) => f && f.category && f.finding);
     const zusammenfassung = report.visibility_summary || "";
     const breakdown = report.composite_breakdown || [];
     // ─── FIX 1: Score uses explicit null check, never borrows from technicalScore ───

@@ -463,7 +463,7 @@ export async function POST(req: NextRequest) {
     // Citation Rate: NOT calculated yet (cited-domains feature pending)
     // Composite: weights renormalized when components are null (no data)
     const components = [
-      { name: "Erwaehnungsrate", value: mentionRateScore, weight: 0.50 },
+      { name: "Erwähnungsrate", value: mentionRateScore, weight: 0.50 },
       { name: "Position", value: positionScore, weight: 0.25 },
       { name: "Sentiment", value: sentimentScore, weight: 0.125 },
       { name: "Share of Voice", value: sovScore, weight: 0.125 },
@@ -485,33 +485,72 @@ export async function POST(req: NextRequest) {
     // ─── Safety net: detect self-referencing prompts (T6 bug) ───
     // If mentionRate >= 0.9 AND no competitors → prompts probably contain the brand name
     const isCircularPrompt = mentionRate !== null && mentionRate >= 0.9 && topCompetitors.length === 0;
+    if (isCircularPrompt) {
+      console.warn(`[GEO-Check] CIRCULAR PROMPT DETECTED: mentionRate=${mentionRate}, no competitors. Measurement is circular for domain=${report.domain}`);
+    }
 
     // If circular prompt detected, override score — it's an echo, not a measurement
     const effectiveCompositeScore = isCircularPrompt ? 0 : compositeScore;
 
-    // ─── Recommendations (deterministic from data) ───
-    const recommendations: string[] = [];
+    // ─── Findings (structured, deterministic from data) ───
+    // Renderer expects: {category, finding, recommendation, priority}
+    const findings: Array<{category: string; finding: string; recommendation: string; priority: number}> = [];
 
     if (mentionRate !== null && mentionRate < 0.3) {
-      recommendations.push("Ihre Marke wird in weniger als 30% der KI-Antworten erwaehnt. Erstellen Sie ein llms.txt auf Ihrer Website und implementieren Sie strukturierte Daten (Schema.org), damit KI-Systeme Ihre Marke leichter finden.");
+      findings.push({
+        category: "Sichtbarkeit",
+        finding: `Ihre Marke wird in weniger als 30% der KI-Antworten erwähnt (${Math.round(mentionRate * 100)}%).`,
+        recommendation: "Erstellen Sie ein llms.txt auf Ihrer Website und implementieren Sie strukturierte Daten (Schema.org), damit KI-Systeme Ihre Marke leichter finden.",
+        priority: 1,
+      });
     }
     if (mentionRate !== null && mentionRate >= 0.3 && mentionRate < 0.7) {
-      recommendations.push("Ihre Marke ist teilweise sichtbar. Optimieren Sie Ihre FAQ-Seiten mit direkten Antworten (BLUF-Stil) und sichern Sie Eintraege in den Verzeichnissen, die Ihre Konkurrenten zitiert bekommen.");
+      findings.push({
+        category: "Sichtbarkeit",
+        finding: `Ihre Marke ist teilweise sichtbar (${Math.round(mentionRate * 100)}%).`,
+        recommendation: "Optimieren Sie Ihre FAQ-Seiten mit direkten Antworten (BLUF-Stil) und sichern Sie Einträge in den Verzeichnissen, die Ihre Konkurrenten zitiert bekommen.",
+        priority: 2,
+      });
     }
     if (mentionRate !== null && mentionRate >= 0.7) {
-      recommendations.push("Ihre Sichtbarkeit ist bereits stark. Schuetzen Sie diese Position durch regelmässige Aktualisierung Ihrer Inhalte und ueberwachen Sie die KI-Empfehlungen.");
+      findings.push({
+        category: "Sichtbarkeit",
+        finding: `Ihre Sichtbarkeit ist bereits stark (${Math.round(mentionRate * 100)}%).`,
+        recommendation: "Schützen Sie diese Position durch regelmäßige Aktualisierung Ihrer Inhalte und überwachen Sie die KI-Empfehlungen.",
+        priority: 5,
+      });
     }
     if (avgPos !== null && avgPos > 2) {
-      recommendations.push("Wenn Ihre Marke erwaehnt wird, erscheint sie durchschnittlich an Position " + avgPos.toFixed(1) + ". Verbessern Sie Ihre Nennung in Verzeichnissen und Presseportalen.");
+      findings.push({
+        category: "Position",
+        finding: `Wenn Ihre Marke erwähnt wird, erscheint sie durchschnittlich an Position ${avgPos.toFixed(1)}.`,
+        recommendation: "Verbessern Sie Ihre Nennung in Verzeichnissen und Presseportalen.",
+        priority: 3,
+      });
     }
     if (topCompetitor && topCompetitorMentions > brandMentionCount) {
-      recommendations.push(`Ihr Wettbewerber "${topCompetitor}" wird haeufiger erwaehnt (${topCompetitorMentions} vs. ${brandMentionCount} mal). Analysieren Sie, welche Quellen ${topCompetitor} zitieren.`);
+      findings.push({
+        category: "Wettbewerb",
+        finding: `Ihr Wettbewerber "${topCompetitor}" wird häufiger erwähnt (${topCompetitorMentions} vs. ${brandMentionCount} mal).`,
+        recommendation: `Analysieren Sie, welche Quellen ${topCompetitor} zitieren, und sichern Sie vergleichbare Einträge.`,
+        priority: 2,
+      });
     }
     if (sentimentScore !== null && sentimentScore < 50 && brandMentionCount > 0) {
-      recommendations.push("Das Sentiment Ihrer Marke in KI-Antworten ist ueberwiegend neutral. Erzeugen Sie positive Signale durch Kundenbewertungen und Fallstudien auf Ihrer Website.");
+      findings.push({
+        category: "Sichtbarkeit",
+        finding: "Das Sentiment Ihrer Marke in KI-Antworten ist überwiegend neutral.",
+        recommendation: "Erzeugen Sie positive Signale durch Kundenbewertungen und Fallstudien auf Ihrer Website.",
+        priority: 4,
+      });
     }
-    if (recommendations.length === 0) {
-      recommendations.push("Fuehren Sie ein vollstaendiges GEO-Audit durch, um detaillierte Handlungsempfehlungen zu erhalten.");
+    if (findings.length === 0) {
+      findings.push({
+        category: "Sichtbarkeit",
+        finding: "Es wurden keine konkreten Probleme in den KI-Antworten identifiziert.",
+        recommendation: "Führen Sie ein vollständiges GEO-Audit durch, um detaillierte Handlungsempfehlungen zu erhalten.",
+        priority: 5,
+      });
     }
 
     // Update AI visibility score
@@ -526,7 +565,7 @@ export async function POST(req: NextRequest) {
             passed: mentionRate > 0,
             weight: 100,
             detail: `${totalMentions} von ${totalQueries} KI-Abfragen nennen ${brandName}`,
-            evidence: `Erwaehnungsrate: ${Math.round(mentionRate * 100)}%`,
+            evidence: `Erwähnungsrate: ${Math.round(mentionRate * 100)}%`,
           },
         ],
       };
@@ -595,7 +634,7 @@ export async function POST(req: NextRequest) {
       analysis_details: allAnalysisDetails,
       composite_score: effectiveCompositeScore,
       composite_breakdown: compositeBreakdown,
-      recommendations,
+      recommendations: findings,
       prompts_used: prompts, // C1: exact prompts sent to providers
       vertical_resolved: verticalResolved, // C3: what vertical was actually used
       timings: {
