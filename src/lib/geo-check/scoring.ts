@@ -366,7 +366,7 @@ function scoreCitability(facts: VerifiedFacts): CitabilityScore {
   const words = facts.content.wordCount;
   if (words >= 500) breakdown.answerStructure += 7;
   else if (words >= 200) breakdown.answerStructure += 3;
-  checks.push({ id: "cit-words", label: "Inhaltsumfang", passed: words >= 500, weight: 7, detail: `${words} Woerter`, evidence: `${words} Woerter` });
+  checks.push({ id: "cit-words", label: "Inhaltsumfang", passed: words >= 500, weight: 7, detail: `${words} Wörter`, evidence: `${words} Wörter` });
 
   // Trust (0-30)
   if (facts.eeat.hasAuthor) { breakdown.trust += 8; checks.push({ id: "cit-author", label: "Autor angegeben", passed: true, weight: 8, detail: "Autor vorhanden", evidence: "meta author oder Klasse" }); }
@@ -459,3 +459,4 @@ export function scoreReport(facts: VerifiedFacts): ScoringResult {
     verdictHeadline: headline,
   };
 }
+// rebuild: verify Wörter in cit-words
