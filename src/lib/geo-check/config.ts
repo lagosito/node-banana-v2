@@ -135,8 +135,32 @@ export function buildOtherPrompts(descriptor: string, region: string): string[] 
 function normalizeForGuard(text: string): string {
   return text
     .toLowerCase()
-    .replace(/ä/g, "a").replace(/ö/g, "o").replace(/ü/g, "u").replace(/ß/g, "ss")
+    .replace(/ß/g, "ss")
+    .replace(/ä/g, "a").replace(/ö/g, "o").replace(/ü/g, "u")
+    .replace(/ae/g, "a").replace(/oe/g, "o").replace(/ue/g, "u")
+    .replace(/ss/g, "s")
     .replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * Longest common subsequence length between two strings.
+ */
+function lcsLength(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  if (m === 0 || n === 0) return 0;
+  // Optimize: only need two rows
+  let prev = new Uint16Array(n + 1);
+  let curr = new Uint16Array(n + 1);
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      curr[j] = a[i - 1] === b[j - 1]
+        ? prev[j - 1] + 1
+        : Math.max(prev[j], curr[j - 1]);
+    }
+    [prev, curr] = [curr, prev];
+    curr.fill(0);
+  }
+  return prev[n];
 }
 
 /**
@@ -222,12 +246,12 @@ export function extractBusinessDescriptor(
     const descriptor = meaningful.slice(0, 4).join(" ");
     const descriptorNorm = normalizeForGuard(descriptor);
 
-    // ─── Brand guard: reject if overlaps with brand or domain ───
+    // ─── Brand guard: reject if longest common subsequence ≥ 4 chars ───
     if (guardTokens.length > 0) {
-      const isRejected = guardTokens.some((token) =>
-        descriptorNorm.includes(token) || token.includes(descriptorNorm),
-      );
-      console.log(`[Guard] descriptor="${descriptor}" norm="${descriptorNorm}" tokens=${JSON.stringify(guardTokens)} rejected=${isRejected}`);
+      const isRejected = guardTokens.some((token) => {
+        const lcs = lcsLength(descriptorNorm, token);
+        return lcs >= 4;
+      });
       if (isRejected) continue; // Skip this candidate, try next segment
     }
 
