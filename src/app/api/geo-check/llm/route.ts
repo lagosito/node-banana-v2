@@ -186,9 +186,9 @@ export async function POST(req: NextRequest) {
       return json({ error: "Report not found" }, { status: 404 });
     }
 
-    // Prevent double-run
+    // Prevent double-run — return success if already completed
     if (report.status === "completed") {
-      return json({ error: "LLM phase already completed" }, { status: 409 });
+      return json({ reportId: report.id, status: "completed", alreadyCompleted: true });
     }
     // If status is "running", previous run likely timed out — reset to allow retry
     if (report.status === "running") {
@@ -316,6 +316,16 @@ export async function POST(req: NextRequest) {
     const allAnalysisDetails: Record<string, any> = {};
     let analyses: Record<string, any> = {};
 
+    // ─── FIX 2+3: Track mentions AND avgPosition per provider ───
+    const providerMentions: Record<string, number> = {};
+    const providerPositionSum: Record<string, number> = {};
+    const providerPositionCount: Record<string, number> = {};
+    for (const provider of enabledProviders) {
+      providerMentions[provider] = 0;
+      providerPositionSum[provider] = 0;
+      providerPositionCount[provider] = 0;
+    }
+
     if (allResponses.length > 0) {
       try {
         analyses = await analyzeResponseBatch(
@@ -325,12 +335,16 @@ export async function POST(req: NextRequest) {
           aliases,
         );
 
-        // Tally mentions and competitors from Haiku analysis
+        // Tally mentions, positions, and competitors from Haiku analysis
         for (const resp of allResponses) {
           const analysis = analyses[resp.id];
           if (analysis?.brand_mentioned) {
             totalMentions++;
-            providerStatuses[resp.provider].mentions++;
+            providerMentions[resp.provider]++;
+            if (analysis.mention_position > 0) {
+              providerPositionSum[resp.provider] += analysis.mention_position;
+              providerPositionCount[resp.provider]++;
+            }
           }
           for (const comp of analysis?.competitors_mentioned || []) {
             allCompetitorCounts[comp] = (allCompetitorCounts[comp] || 0) + 1;
@@ -348,16 +362,52 @@ export async function POST(req: NextRequest) {
         // Fall back to 0 mentions — Haiku failure is logged, not fatal
       }
 
-      // Re-save provider statuses with final mention counts from Haiku analysis
-      for (const provider of Object.keys(providerStatuses)) {
+      // Re-save provider statuses with final mention counts AND avgPosition
+      for (const provider of enabledProviders) {
+        const avgPos = providerPositionCount[provider] > 0
+          ? providerPositionSum[provider] / providerPositionCount[provider]
+          : null;
+        providerStatuses[provider] = {
+          ...providerStatuses[provider],
+          mentions: providerMentions[provider],
+          avgPosition: avgPos != null ? Math.round(avgPos * 10) / 10 : null,
+        };
         await setProviderStatus(report.id, provider as ProviderName, providerStatuses[provider]);
       }
     }
 
-    // ─── Compute top competitor + top 5 ranking from Haiku analysis ───
+    // ─── FIX 4: Dedup competitors by alias (e.g. "Ratsherrn Brauerei" + "Ratsherrn") ───
+    const dedupedCompetitorCounts: Record<string, number> = {};
+    const competitorKeys = Object.keys(allCompetitorCounts);
+    const claimed = new Set<string>();
+    for (let i = 0; i < competitorKeys.length; i++) {
+      if (claimed.has(competitorKeys[i])) continue;
+      const a = competitorKeys[i].toLowerCase();
+      let bestName = competitorKeys[i];
+      let bestCount = allCompetitorCounts[competitorKeys[i]];
+      for (let j = i + 1; j < competitorKeys.length; j++) {
+        if (claimed.has(competitorKeys[j])) continue;
+        const b = competitorKeys[j].toLowerCase();
+        // Check if one is a substring of the other (normalized)
+        const aNorm = a.replace(/[^a-z0-9]/g, "");
+        const bNorm = b.replace(/[^a-z0-9]/g, "");
+        if (aNorm.includes(bNorm) || bNorm.includes(aNorm)) {
+          // Same brand — keep the longer name, take max count
+          if (competitorKeys[j].length > bestName.length) {
+            bestName = competitorKeys[j];
+          }
+          bestCount = Math.max(bestCount, allCompetitorCounts[competitorKeys[j]]);
+          claimed.add(competitorKeys[j]);
+        }
+      }
+      dedupedCompetitorCounts[bestName] = bestCount;
+      claimed.add(competitorKeys[i]);
+    }
+
+    // ─── Compute top competitor + top 5 ranking from deduped data ───
     let topCompetitor = "";
     let topCompetitorMentions = 0;
-    const topCompetitors = Object.entries(allCompetitorCounts)
+    const topCompetitors = Object.entries(dedupedCompetitorCounts)
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
@@ -427,7 +477,7 @@ export async function POST(req: NextRequest) {
     const compositeBreakdown = components.map((c) => ({
       component: c.name,
       raw: c.value === null ? "n/a" : `${Math.round(c.value as number)}${c.name === "Position" ? "" : "%"}`,
-      weight: c.value === null ? "excluido" : `${Math.round((c.weight / totalWeight) * 100)}%`,
+      weight: c.value === null ? "ausgeschlossen" : `${Math.round((c.weight / totalWeight) * 100)}%`,
       points: c.value === null ? "—" : `${Math.round((c.value as number) * (c.weight / totalWeight))}`,
       excluded: c.value === null,
     }));

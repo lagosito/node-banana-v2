@@ -20,7 +20,7 @@ export interface ReportRow {
   verified_facts: any;
   // Phase 2: LLM
   status: "pending" | "running" | "completed" | "error";
-  provider_status: Record<string, { status: string; queriesRun: number; mentions: number; error?: string }>;
+  provider_status: Record<string, { status: string; queriesRun: number; mentions: number; avgPosition?: number | null; error?: string }>;
   llm_results: any;
   mention_rate: number | null;
   queries_tested: number | null;
@@ -140,7 +140,7 @@ export async function setReportStatus(
 export async function setProviderStatus(
   id: string,
   provider: ProviderName,
-  providerStatus: { status: string; queriesRun: number; mentions: number; error?: string },
+  providerStatus: { status: string; queriesRun: number; mentions: number; avgPosition?: number | null; error?: string },
 ): Promise<void> {
   const sb = supabase();
   if (!sb) return;

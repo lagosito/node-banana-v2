@@ -48,7 +48,7 @@ export async function GET(
         name,
         runs: ps.queriesRun || 0,
         mentions: ps.mentions || 0,
-        avgPosition: (ps.mentions || 0) > 0 ? null : null, // null = no data, never 0
+        avgPosition: ps.avgPosition ?? null,
         cited: 0,
         incomplete: ps.status === "partial" || ps.status === "error",
       }),
@@ -71,7 +71,9 @@ export async function GET(
     }));
     const zusammenfassung = report.visibility_summary || "";
     const breakdown = report.composite_breakdown || [];
-    const score = (report.composite_score ?? 0) > 0 ? report.composite_score! : report.overall_score ?? 0;
+    // ─── FIX 1: Score uses explicit null check, never borrows from technicalScore ───
+    const score = report.composite_score != null ? report.composite_score : report.overall_score ?? 0;
+    const compositeScoreForFrontend = report.composite_score != null ? report.composite_score : null;
 
     // Score label for frontend color coding
     const scoreLabel = score < 40 ? "Schwach" : score <= 70 ? "Mittel" : "Gut";
@@ -114,7 +116,7 @@ export async function GET(
       topCompetitors: report.top_competitors || [],
       visibilitySummary: report.visibility_summary || null,
       // New v2 fields
-      compositeScore: (report.composite_score ?? 0) > 0 ? report.composite_score : null,
+      compositeScore: compositeScoreForFrontend,
       compositeBreakdown: report.composite_breakdown || null,
       analysisDetails: report.analysis_details || null,
       // Compatibility fields for Lovable frontend (GEO-Audit format)
