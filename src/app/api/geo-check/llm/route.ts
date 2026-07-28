@@ -210,7 +210,7 @@ export async function POST(req: NextRequest) {
 
     if (reportVertical === "Other") {
       // C2: Extract descriptor from crawl — reject if confidence too low
-      const { descriptor, confidence } = extractBusinessDescriptor(rawTitle || "", null);
+      const { descriptor, confidence } = extractBusinessDescriptor(rawTitle || "", null, report.domain, brandName);
       otherDescriptor = descriptor;
 
       if (!descriptor || confidence < 0.5) {
@@ -431,6 +431,13 @@ export async function POST(req: NextRequest) {
       excluded: c.value === null,
     }));
 
+    // ─── Safety net: detect self-referencing prompts (T6 bug) ───
+    // If mentionRate >= 0.9 AND no competitors → prompts probably contain the brand name
+    const isCircularPrompt = mentionRate !== null && mentionRate >= 0.9 && topCompetitors.length === 0;
+
+    // If circular prompt detected, override score — it's an echo, not a measurement
+    const effectiveCompositeScore = isCircularPrompt ? 0 : compositeScore;
+
     // ─── Recommendations (deterministic from data) ───
     const recommendations: string[] = [];
 
@@ -535,7 +542,7 @@ export async function POST(req: NextRequest) {
       top_competitors: topCompetitors,
       visibility_summary: visibilitySummary,
       analysis_details: allAnalysisDetails,
-      composite_score: compositeScore,
+      composite_score: effectiveCompositeScore,
       composite_breakdown: compositeBreakdown,
       recommendations,
       prompts_used: prompts, // C1: exact prompts sent to providers

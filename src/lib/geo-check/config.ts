@@ -130,38 +130,82 @@ export function buildOtherPrompts(descriptor: string, region: string): string[] 
 }
 
 /**
+ * Normalize text for comparison: lowercase, fold diacritics, strip spaces/signs.
+ */
+function normalizeForGuard(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/ä/g, "a").replace(/ö/g, "o").replace(/ü/g, "u").replace(/ß/g, "ss")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+/**
  * Extract a business descriptor (German noun phrase) from page title and meta description.
  * Returns { descriptor, confidence } where confidence is 0-1.
- * Returns null descriptor when extraction fails.
+ * Returns null descriptor when extraction fails (triggers C2 fallback).
+ *
+ * CRITICAL: The descriptor must be the TYPE OF BUSINESS, never the brand name.
+ * Brand guard is mandatory — see references/other-vertical-spec.md.
  */
 export function extractBusinessDescriptor(
   title: string,
   description: string | null,
+  domain?: string,
+  brandName?: string,
 ): { descriptor: string | null; confidence: number } {
-  // Generic words to strip (brand-like, navigation, boilerplate)
+  // ─── Generic/boilerplate words to strip ───
   const STRIP = new Set([
     "home", "startseite", "willkommen", "willkommen bei",
     "offizielle website", "offizieller", "online shop", "online-shop",
     "ihre", "deine", "mein", "unser", "unsere",
     "gmbh", "ug", "kg", "ag", "ohg", "ec", "ev",
     "hamburg", "berlin", "münchen", "köln", "frankfurt", "deutschland",
-    "de", "at", "ch", "com", "de", "shop", "portal",
+    "de", "at", "ch", "com", "shop", "portal",
     "seite", "site", "webseite", "website",
   ]);
 
-  // Combine title and description
+  // ─── Empty noun rejection list (also triggers C2) ───
+  // These describe no business type — brand guard won't catch them
+  const EMPTY_NOUNS = new Set([
+    "webseite", "website", "startseite", "home", "willkommen",
+    "unternehmen", "firma", "geschäft", "online-shop", "portal",
+    "seite", "shop", "dienstleistung", "anbieter", "service",
+  ]);
+
+  // ─── Build brand/domain guard tokens ───
+  const guardTokens: string[] = [];
+  if (brandName) {
+    const core = normalizeForGuard(brandName);
+    if (core.length >= 4) guardTokens.push(core);
+    // Also add individual tokens of 4+ chars
+    for (const t of core.split(/[^a-z0-9]+/)) {
+      if (t.length >= 4) guardTokens.push(t);
+    }
+  }
+  if (domain) {
+    const domainCore = normalizeForGuard(domain.split(".")[0]);
+    if (domainCore.length >= 4) guardTokens.push(domainCore);
+    for (const t of domainCore.split(/[^a-z0-9]+/)) {
+      if (t.length >= 4) guardTokens.push(t);
+    }
+  }
+
+  // ─── Combine title and description ───
   const text = `${title} ${description || ""}`.toLowerCase();
 
-  // Remove brand-like segments (before " - ", " | ", " – ", " — ")
-  const segments = text.split(/\s*[-–—|]\s*/);
-  // Use the last segment (often the business descriptor) or the longest one
+  // Split on separators — prefer segments AFTER separator (usually the description, not the brand)
+  const segments = text.split(/\s*[-–—|·]\s*/);
   const candidates = segments
     .map((s) => s.trim())
     .filter((s) => s.length > 2);
 
-  // Try each segment for descriptor extraction
-  for (const segment of candidates) {
-    // Split into words
+  // Reorder: try segments after the first one FIRST (description usually comes after brand)
+  const ordered = candidates.length > 1
+    ? [...candidates.slice(1), candidates[0]]
+    : candidates;
+
+  // ─── Try each segment for descriptor extraction ───
+  for (const segment of ordered) {
     const words = segment.split(/\s+/).filter((w) => w.length > 1);
 
     // Remove generic/boilerplate words
@@ -172,21 +216,32 @@ export function extractBusinessDescriptor(
 
     if (meaningful.length === 0) continue;
 
-    // Take the meaningful words as descriptor (max 4 words to keep it concise)
     const descriptor = meaningful.slice(0, 4).join(" ");
+    const descriptorNorm = normalizeForGuard(descriptor);
 
-    // Confidence scoring
+    // ─── Brand guard: reject if overlaps with brand or domain ───
+    if (guardTokens.length > 0) {
+      const isRejected = guardTokens.some((token) =>
+        descriptorNorm.includes(token) || token.includes(descriptorNorm),
+      );
+      if (isRejected) continue; // Skip this candidate, try next segment
+    }
+
+    // ─── Empty noun rejection ───
+    const allMeaningfulNorm = meaningful.map((w) => normalizeForGuard(w));
+    const allEmpty = allMeaningfulNorm.every((w) => EMPTY_NOUNS.has(w));
+    if (allEmpty) continue;
+
+    // ─── Confidence scoring (note: word-count based, part of the bug — see spec) ───
     let confidence = 0;
     if (meaningful.length >= 2) confidence = 0.7;
     if (meaningful.length >= 3) confidence = 0.85;
     if (meaningful.length >= 4) confidence = 0.9;
-
-    // Boost confidence if German business words are present
     const businessWords = [
       "anbieter", "dienstleistung", "laden", "geschäft", "studio",
       "werkstatt", "betrieb", "firma", "hersteller", "produkt",
       "beratung", "service", "kurse", "behandlung", "pflege",
-      "montage", "reparatur", "planung", "beratung",
+      "montage", "reparatur", "planung",
     ];
     if (meaningful.some((w) => businessWords.some((bw) => w.includes(bw)))) {
       confidence = Math.min(confidence + 0.1, 1);
@@ -195,5 +250,6 @@ export function extractBusinessDescriptor(
     return { descriptor, confidence };
   }
 
+  // All candidates rejected or no meaningful content → C2 fallback
   return { descriptor: null, confidence: 0 };
 }
