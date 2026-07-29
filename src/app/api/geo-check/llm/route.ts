@@ -3,7 +3,7 @@
 // Body: { reportId: string }
 
 import { NextRequest, NextResponse } from "next/server";
-import { fetchBrandName, normalizeVertical, buildCheckPrompts, buildBrandAliases, extractCoreBrand, fetchPageTitle, buildOtherPrompts, extractBusinessDescriptor, classifyDescriptor } from "@/lib/geo-check";
+import { fetchBrandName, normalizeVertical, buildCheckPrompts, buildBrandAliases, extractCoreBrand, fetchPageTitle, buildOtherPrompts, extractBusinessDescriptor, classifyDescriptor, PROMPTS_BY_VERTICAL } from "@/lib/geo-check";
 import { analyzeResponseBatch } from "@/lib/geo-audit/analyzer";
 import {
   getReport,
@@ -242,14 +242,31 @@ export async function POST(req: NextRequest) {
       prompts = buildOtherPrompts(classifiedDescriptor, region);
       verticalResolved = `Other (descriptor: ${classifiedDescriptor})`;
     } else {
-      // Standard vertical: use curated prompts from Prompt Library (6 of 12)
-      const vertical = normalizeVertical(reportVertical);
-      prompts = buildCheckPrompts(vertical, region);
+      // Check if vertical matches a curated set
+      const normalized = normalizeVertical(reportVertical);
+      if (normalized !== "Other" && PROMPTS_BY_VERTICAL[normalized]) {
+        // Curated prompts from Prompt Library (6 of 12)
+        prompts = buildCheckPrompts(normalized, region);
+        verticalResolved = normalized;
+      } else {
+        // Free text that doesn't match any curated vertical → generate from text
+        prompts = buildOtherPrompts(reportVertical, region);
+        verticalResolved = `Free (text: ${reportVertical})`;
+      }
     }
 
     // Log prompts for auditability (C1)
     console.log(`[GEO-Check] vertical=${reportVertical}, verticalResolved=${verticalResolved}`);
     console.log(`[GEO-Check] prompts:`, prompts);
+
+    // Guard: no prompts generated → neutral state, not "completed" with score 0
+    if (prompts.length === 0) {
+      await setReportStatus(report.id, "error");
+      return json({
+        error: "Es konnten keine passenden Fragen für diesen Bereich generiert werden. Bitte versuchen Sie es mit einem anderen Suchbegriff.",
+        errorType: "no_prompts_generated",
+      }, { status: 422 });
+    }
 
     // Run all enabled providers in parallel (Promise.allSettled)
     const enabledProviders = (["gemini", "openai", "perplexity"] as ProviderName[]).filter(isProviderEnabled);
