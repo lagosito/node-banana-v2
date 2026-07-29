@@ -76,7 +76,7 @@ Geschäftstyp (nur 1-2 Wörter auf Deutsch):`;
         signal: controller.signal,
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.1, maxOutputTokens: 50 },
+          generationConfig: { temperature: 0.1, maxOutputTokens: 500 },
         }),
       },
     );
