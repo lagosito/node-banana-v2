@@ -254,6 +254,11 @@ const deUmlaut = (s: string) => s
   .replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue").replace(/ß/g,"ss")
   .replace(/Ä/g,"Ae").replace(/Ö/g,"Oe").replace(/Ü/g,"Ue");
 
+// Inverse: ae→ä, oe→ö, ue→ü (for matching brands stored with ASCII umlauts)
+const reUmlaut = (s: string) => s
+  .replace(/ae/g,"ä").replace(/oe/g,"ö").replace(/ue/g,"ü")
+  .replace(/Ae/g,"Ä").replace(/Oe/g,"Ö").replace(/Ue/g,"Ü");
+
 /**
  * Extract the distinctive core of a brand name from a page title.
  * Cuts at a SPACED separator or at , | :
@@ -308,12 +313,16 @@ export function buildBrandAliases(domain: string, brandName: string): string[] {
   const cleaned = extractCoreBrand(brandName, domain);
   add(cleaned);
   add(deUmlaut(cleaned));
+  add(reUmlaut(cleaned));
   add(brandName);
   add(deUmlaut(brandName));
+  add(reUmlaut(brandName));
   add(domain);
   const core = domain.split(".")[0];
   add(core);
   add(core.replace(/-/g, " "));
+  add(deUmlaut(core));
+  add(reUmlaut(core));
   return [...out];
 }
 

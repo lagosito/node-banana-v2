@@ -1,5 +1,5 @@
 // GEO Check — Descriptor classifier (1 LLM call, long-tail only)
-// Classifies raw text descriptors into max 2-word German business types.
+// Classifies raw text descriptors into a German business type noun.
 
 export async function classifyDescriptor(
   rawDescriptor: string,
@@ -9,27 +9,31 @@ export async function classifyDescriptor(
   const key = process.env.GEMINI_API_KEY;
   if (!key) return { descriptor: rawDescriptor, confidence: 0.5 };
 
-  const prompt = `Du bist ein Branchen-Klassifizierer. Extrahiere den Geschäftstyp aus den folgenden Informationen und gib ihn als maximal 2-Wörter auf Deutsch zurück.
+  const prompt = `Du bist ein Branchen-Klassifizierer. Extrahiere den Geschäftstyp als einzelnes deutsches Substantiv (oder zusammengesetztes Substantiv).
 
 Regeln:
-- Maximal 2 Wörter
+- Ein einziges deutsches Substantiv oder Kompositum (z.B. "Sektkellerei", "Reinigungsdienst", "Schmuckgeschäft")
 - Immer auf Deutsch, auch wenn die Quelle Englisch ist
 - Geschäftstyp, nicht Markenname
-- Keine Beschreibung, nur der Begriff
+- Kein Satz, nur der Begriff
+- Kein "und" oder Aufzählung
 
 Beispiele:
-- "Handmade Jewelry – Handcut golden silhouette pendants" → "Schmuck"
-- "Organic Skincare & Wellness Products" → "Kosmetik"
+- "Handmade Jewelry – Handcut golden silhouette pendants" → "Schmuckgeschäft"
+- "Konterfey - Handmade Jewelry" → "Schmuckgeschäft"
+- "Rotkäpchen - Sekt und Champagner" → "Sektkellerei"
+- "Organic Skincare & Wellness Products" → "Kosmetikgeschäft"
 - "Premium Craft Beer Brewery" → "Brauerei"
 - "Fine Wine & Spirits" → "Weinhandel"
 - "Italian Restaurant & Pizza" → "Restaurant"
 - "Home Cleaning Services" → "Reinigungsdienst"
+- "Weingut Dr. Bürklin-Wolf - Biowein aus der Pfalz" → "Weingut"
 
 Titel: ${title}
 Beschreibung: ${description || "(keine)"}
 Rohdeskriptor: ${rawDescriptor}
 
-Geschäftstyp (nur 1-2 Wörter auf Deutsch):`;
+Geschäftstyp (ein deutsches Substantiv):`;
 
   try {
     const controller = new AbortController();
@@ -50,12 +54,15 @@ Geschäftstyp (nur 1-2 Wörter auf Deutsch):`;
     if (!res.ok) return { descriptor: rawDescriptor, confidence: 0.5 };
     const data = await res.json();
     const text = (data.candidates?.[0]?.content?.parts?.[0]?.text || "").trim();
-    // Clean up: remove quotes, periods, extra words
-    const cleaned = text.replace(/["'`]/g, "").replace(/\.$/, "").trim();
-    // Take first 2 words max
-    const words = cleaned.split(/\s+/).slice(0, 2).join(" ");
-    if (words.length >= 2) {
-      return { descriptor: words, confidence: 0.8 };
+    // Clean up: remove quotes, periods, take only the first line
+    const cleaned = text
+      .replace(/["'`]/g, "")
+      .replace(/\.$/, "")
+      .trim()
+      .split("\n")[0]
+      .trim();
+    if (cleaned.length >= 2) {
+      return { descriptor: cleaned, confidence: 0.8 };
     }
     return { descriptor: rawDescriptor, confidence: 0.5 };
   } catch {
