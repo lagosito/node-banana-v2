@@ -10,6 +10,7 @@ import {
   setReportStatus,
   setProviderStatus,
   setLlmResults,
+  updateReportVertical,
 } from "@/lib/geo-check/storage";
 import type { ProviderName } from "@/lib/geo-check/storage";
 import { reviewReport } from "@/lib/geo-check/reviewer";
@@ -175,7 +176,7 @@ function isProviderEnabled(name: ProviderName): boolean {
 
 export async function POST(req: NextRequest) {
   try {
-    const { reportId } = await req.json();
+    const { reportId, vertical: confirmedVertical } = await req.json();
 
     if (!reportId) {
       return json({ error: "reportId is required" }, { status: 400 });
@@ -184,6 +185,12 @@ export async function POST(req: NextRequest) {
     const report = await getReport(reportId);
     if (!report) {
       return json({ error: "Report not found" }, { status: 404 });
+    }
+
+    // If user confirmed a vertical, override the stored one
+    if (confirmedVertical && confirmedVertical !== report.vertical) {
+      await updateReportVertical(report.id, confirmedVertical);
+      report.vertical = confirmedVertical;
     }
 
     // Prevent double-run — return success if already completed

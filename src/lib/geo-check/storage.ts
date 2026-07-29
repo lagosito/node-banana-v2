@@ -211,6 +211,16 @@ export async function setLlmResults(
   if (error) throw new Error(`setLlmResults: ${error.message}`);
 }
 
+export async function updateReportVertical(id: string, vertical: string): Promise<void> {
+  const sb = supabase();
+  if (!sb) return;
+  const { error } = await sb
+    .from("geo_check_reports")
+    .update({ vertical })
+    .eq("id", id);
+  if (error) throw new Error(`updateReportVertical: ${error.message}`);
+}
+
 // ─── Read ───
 
 export async function getReport(idOrSlug: string): Promise<ReportRow | null> {
