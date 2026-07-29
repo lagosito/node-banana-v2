@@ -11,6 +11,7 @@ import {
   VALID_VERTICALS,
   fetchPageTitle,
   extractBusinessDescriptor,
+  inferVerticalFromTitle,
 } from "@/lib/geo-check";
 import { collectFacts } from "@/lib/geo-check/crawler";
 import { scoreReport } from "@/lib/geo-check/scoring";
@@ -152,19 +153,34 @@ export async function POST(req: NextRequest) {
 
     const brandName = await fetchBrandName(dns.domain);
 
-    // When vertical is "Other", extract descriptor from crawl (don't infer vertical)
+    // ─── Auto-detect vertical from page title ───
     let effectiveVertical = vertical || "Other";
     let otherDescriptor: string | null = null;
     let otherConfidence = 0;
-    if (effectiveVertical === "Other") {
-      const rawTitle = await fetchPageTitle(dns.domain);
+    let detectedVertical: string | null = null;
+    let detectionMethod: string | null = null;
+
+    const rawTitle = await fetchPageTitle(dns.domain);
+
+    if (!vertical || vertical === "Other") {
+      // Step 1: Try keyword matching (free, instant) — informational only
+      // The detected vertical is returned as metadata; effectiveVertical stays
+      // "Other" until the frontend confirms via the confirmation screen.
       if (rawTitle) {
+        const keywordMatch = inferVerticalFromTitle(rawTitle);
+        if (keywordMatch !== "Other") {
+          detectedVertical = keywordMatch;
+          detectionMethod = "keyword";
+          // effectiveVertical stays "Other" — frontend must confirm
+        }
+      }
+
+      // Step 2: If no keyword match, extract descriptor for "Other" path
+      if (!detectedVertical && rawTitle) {
         const { descriptor, confidence } = extractBusinessDescriptor(rawTitle, facts.meta.description, dns.domain, brandName);
         otherDescriptor = descriptor;
         otherConfidence = confidence;
-        // Keep vertical as "Other" — don't map to a known vertical
       }
-      // If descriptor extraction failed (confidence < 0.5), Phase 2 will reject
     }
 
     // Build topProblems from failing checks
@@ -219,8 +235,19 @@ export async function POST(req: NextRequest) {
 
     // Fetch the full row for response
     const report = await getReport(reportId);
+    const response = buildV2Phase1(report!);
 
-    return json(buildV2Phase1(report!), { headers: { "x-ratelimit-limit": "5", "x-ratelimit-remaining": String(rateLimit.remaining) } });
+    // Add detection metadata for frontend confirmation screen
+    if (detectedVertical) {
+      response.detected_vertical = detectedVertical;
+      response.detection_method = detectionMethod;
+    }
+    if (otherDescriptor) {
+      response.other_descriptor = otherDescriptor;
+      response.other_confidence = otherConfidence;
+    }
+
+    return json(response, { headers: { "x-ratelimit-limit": "5", "x-ratelimit-remaining": String(rateLimit.remaining) } });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unbekannter Fehler";
     // Expose Supabase URL issues (masked) without leaking secrets

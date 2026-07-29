@@ -434,11 +434,21 @@ export function extractBusinessDescriptor(
     const descriptor = meaningful.slice(0, 4).join(" ");
     const descriptorNorm = normalizeForGuard(descriptor);
 
-    // ─── Brand guard: reject if longest common subsequence ≥ 4 chars ───
+    // ─── Brand guard: reject if descriptor matches brand/domain ───
+    // Uses word-level matching (not character LCS) to avoid false positives
+    // like "handmade jewelry" being rejected against "konterfey"
     if (guardTokens.length > 0) {
+      const descWords = descriptorNorm.split(/[^a-z0-9]+/).filter((w) => w.length >= 2);
       const isRejected = guardTokens.some((token) => {
-        const lcs = lcsLength(descriptorNorm, token);
-        return lcs >= 4;
+        // Word-level: exact match or word contains/is contained by token
+        if (descWords.some((dw) => dw === token || token.includes(dw) || dw.includes(token))) {
+          return true;
+        }
+        // Substring: full descriptor contains brand/domain or vice versa
+        if (descriptorNorm.includes(token) || token.includes(descriptorNorm)) {
+          return true;
+        }
+        return false;
       });
       if (isRejected) continue; // Skip this candidate, try next segment
     }

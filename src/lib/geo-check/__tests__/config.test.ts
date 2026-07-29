@@ -102,7 +102,7 @@ describe("C2: fallback for empty/generic titles", () => {
   });
 });
 
-// ─── Descriptor extraction: real cases ───
+// ─── Descriptor extraction: real German businesses ───
 describe("Descriptor extraction: real German businesses", () => {
   it("extracts 'Bio-Bier aus Bayern' from lammsbraeu.de title", () => {
     const { descriptor } = extractBusinessDescriptor(
@@ -130,5 +130,19 @@ describe("Descriptor extraction: real German businesses", () => {
     expect(descriptor).toBeTruthy();
     // Should not be the brand name
     expect(normalize(descriptor!)).not.toContain(normalize("Christmann"));
+  });
+
+  // konterfey.me bug: brand guard was rejecting "handmade jewelry" via LCS false positive
+  it("extracts 'Handmade Jewelry' from konterfey.me (brand guard word-level fix)", () => {
+    const { descriptor, confidence } = extractBusinessDescriptor(
+      "Konterfey - Handmade Jewelry – Konterfey - Handmade Jewellery",
+      "Handcut golden silhouette pendants made of recycled gold",
+      "konterfey.me",
+      "Konterfey",
+    );
+    expect(descriptor).toBeTruthy();
+    expect(descriptor!.toLowerCase()).toContain("handmade");
+    expect(descriptor!.toLowerCase()).toContain("jewelry");
+    expect(confidence).toBeGreaterThanOrEqual(0.7);
   });
 });
