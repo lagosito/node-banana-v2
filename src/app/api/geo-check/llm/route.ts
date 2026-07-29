@@ -191,6 +191,8 @@ export async function POST(req: NextRequest) {
     if (confirmedVertical && confirmedVertical !== report.vertical) {
       await updateReportVertical(report.id, confirmedVertical);
       report.vertical = confirmedVertical;
+      // Reset status so the check re-runs with new vertical
+      await setReportStatus(report.id, "pending");
     }
 
     // Prevent double-run — return success if already completed
