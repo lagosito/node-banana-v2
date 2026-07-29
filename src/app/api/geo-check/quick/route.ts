@@ -136,7 +136,13 @@ export async function POST(req: NextRequest) {
     if (!force) {
       const cached = await getReportByDomain(dns.domain);
       if (cached) {
-        return json(buildV2Phase1(cached), { headers: { "x-ratelimit-limit": String(maxPerDay), "x-ratelimit-remaining": String(rateLimit.remaining) } });
+        const cachedResponse = buildV2Phase1(cached);
+        const detection = cached.verified_facts?._detection || {};
+        if (detection.detected_vertical) {
+          cachedResponse.detected_vertical = detection.detected_vertical;
+          cachedResponse.detection_method = detection.detection_method;
+        }
+        return json(cachedResponse, { headers: { "x-ratelimit-limit": String(maxPerDay), "x-ratelimit-remaining": String(rateLimit.remaining) } });
       }
     }
 
@@ -220,7 +226,15 @@ export async function POST(req: NextRequest) {
       citability: scores.citability,
       findings,
       topProblems,
-      verifiedFacts: facts,
+      verifiedFacts: {
+        ...facts,
+        _detection: {
+          detected_vertical: detectedVertical,
+          detection_method: detectionMethod,
+          other_descriptor: otherDescriptor,
+          other_confidence: otherConfidence,
+        },
+      },
       brandName,
       vertical: effectiveVertical,
       region,
