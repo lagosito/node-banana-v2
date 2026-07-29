@@ -12,6 +12,7 @@ import {
   fetchPageTitle,
   extractBusinessDescriptor,
   inferVerticalFromTitle,
+  classifyDescriptor,
 } from "@/lib/geo-check";
 import { collectFacts } from "@/lib/geo-check/crawler";
 import { scoreReport } from "@/lib/geo-check/scoring";
@@ -181,11 +182,17 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Step 2: If no keyword match, extract descriptor for "Other" path
+      // Step 2: If no keyword match, extract and classify descriptor for "Other" path
       if (!detectedVertical && rawTitle) {
-        const { descriptor, confidence } = extractBusinessDescriptor(rawTitle, facts.meta.description, dns.domain, brandName);
-        otherDescriptor = descriptor;
-        otherConfidence = confidence;
+        const { descriptor: rawDescriptor, confidence } = extractBusinessDescriptor(rawTitle, facts.meta.description, dns.domain, brandName);
+        if (rawDescriptor && confidence >= 0.5) {
+          // Classify raw descriptor into proper German business type (1 LLM call)
+          const { descriptor: classifiedDescriptor } = await classifyDescriptor(
+            rawDescriptor, rawTitle, facts.meta.description,
+          );
+          otherDescriptor = classifiedDescriptor;
+          otherConfidence = confidence;
+        }
       }
     }
 
@@ -252,6 +259,7 @@ export async function POST(req: NextRequest) {
     const response = buildV2Phase1(report!);
 
     // Add detection metadata for frontend confirmation screen
+    response.selected_vertical = effectiveVertical;
     if (detectedVertical) {
       response.detected_vertical = detectedVertical;
       response.detection_method = detectionMethod;

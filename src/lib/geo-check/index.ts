@@ -31,6 +31,8 @@ import {
   buildOtherPrompts,
   extractBusinessDescriptor,
 } from "./config";
+
+import { classifyDescriptor } from "./classify";
 export {
   VALID_VERTICALS,
   type ValidVertical,
@@ -45,6 +47,7 @@ export {
   OTHER_TEMPLATES,
   buildOtherPrompts,
   extractBusinessDescriptor,
+  classifyDescriptor,
 };
 
 // Re-export fetchPageTitle (defined below, exported here for external consumers)
