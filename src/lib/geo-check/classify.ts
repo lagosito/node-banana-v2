@@ -9,31 +9,24 @@ export async function classifyDescriptor(
   const key = process.env.GEMINI_API_KEY;
   if (!key) return { descriptor: rawDescriptor, confidence: 0.5 };
 
-  const prompt = `Du bist ein Branchen-Klassifizierer. Extrahiere den Geschäftstyp als einzelnes deutsches Substantiv (oder zusammengesetztes Substantiv).
+  const prompt = `Du bist ein Branchen-Klassifizierer. Antworte NUR mit einem einzigen deutschen Substantiv. Kein Satz, keine Erklärung, kein Englisch.
 
-Regeln:
-- Ein einziges deutsches Substantiv oder Kompositum (z.B. "Sektkellerei", "Reinigungsdienst", "Schmuckgeschäft")
-- Immer auf Deutsch, auch wenn die Quelle Englisch ist
-- Geschäftstyp, nicht Markenname
-- Kein Satz, nur der Begriff
-- Kein "und" oder Aufzählung
+Aufgabe: Welcher deutsche Geschäftstyp beschreibt dieses Unternehmen?
 
-Beispiele:
-- "Handmade Jewelry – Handcut golden silhouette pendants" → "Schmuckgeschäft"
-- "Konterfey - Handmade Jewelry" → "Schmuckgeschäft"
-- "Rotkäpchen - Sekt und Champagner" → "Sektkellerei"
-- "Organic Skincare & Wellness Products" → "Kosmetikgeschäft"
-- "Premium Craft Beer Brewery" → "Brauerei"
-- "Fine Wine & Spirits" → "Weinhandel"
-- "Italian Restaurant & Pizza" → "Restaurant"
-- "Home Cleaning Services" → "Reinigungsdienst"
-- "Weingut Dr. Bürklin-Wolf - Biowein aus der Pfalz" → "Weingut"
+Beispiele (NUR das Substantiv):
+"Handmade Jewelry" → Schmuckgeschäft
+"Konterfey - Handmade Jewelry" → Schmuckgeschäft
+"Sekt und Champagner" → Sektkellerei
+"Biowein aus der Pfalz" → Weingut
+"Craft Beer Brewery" → Brauerei
+"Italian Restaurant" → Restaurant
+"Home Cleaning" → Reinigungsdienst
+"Organic Skincare" → Kosmetikgeschäft
 
 Titel: ${title}
 Beschreibung: ${description || "(keine)"}
-Rohdeskriptor: ${rawDescriptor}
 
-Geschäftstyp (ein deutsches Substantiv):`;
+Antwort (NUR ein deutsches Substantiv):`;
 
   try {
     const controller = new AbortController();
@@ -61,8 +54,13 @@ Geschäftstyp (ein deutsches Substantiv):`;
       .trim()
       .split("\n")[0]
       .trim();
-    if (cleaned.length >= 2) {
+    // Validate: must be reasonable length and not a sentence
+    if (cleaned.length >= 2 && cleaned.length <= 60 && !cleaned.includes(" ")) {
       return { descriptor: cleaned, confidence: 0.8 };
+    }
+    // If it contains spaces, it might be a compound — allow if short enough
+    if (cleaned.length >= 2 && cleaned.length <= 40) {
+      return { descriptor: cleaned, confidence: 0.7 };
     }
     return { descriptor: rawDescriptor, confidence: 0.5 };
   } catch {
