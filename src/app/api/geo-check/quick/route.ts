@@ -140,8 +140,10 @@ export async function POST(req: NextRequest) {
         const cachedResponse = buildV2Phase1(cached);
         cachedResponse.selected_vertical = cached.vertical || "Other";
 
-        // Always run detection on cached reports (title fetch is fast)
-        const cachedTitle = await fetchPageTitle(dns.domain);
+        // Always run detection on cached reports
+        // Try to get title from stored verified_facts first, fallback to fetch
+        const cachedTitle = cached.verified_facts?.meta?.title
+          || await fetchPageTitle(dns.domain);
         if (cachedTitle) {
           const keywordMatch = inferVerticalFromTitle(cachedTitle);
           if (keywordMatch !== "Other") {
@@ -150,8 +152,9 @@ export async function POST(req: NextRequest) {
           } else {
             // No keyword match — extract and classify descriptor (1 LLM call)
             const brandName = cached.brand_name || await fetchBrandName(dns.domain);
+            const cachedDesc = cached.verified_facts?.meta?.description || null;
             const { descriptor: rawDescriptor, confidence } = extractBusinessDescriptor(
-              cachedTitle, null, dns.domain, brandName,
+              cachedTitle, cachedDesc, dns.domain, brandName,
             );
             if (rawDescriptor && confidence >= 0.5) {
               const { descriptor: classifiedDescriptor } = await classifyDescriptor(
