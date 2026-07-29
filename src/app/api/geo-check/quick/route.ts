@@ -140,35 +140,25 @@ export async function POST(req: NextRequest) {
         const cachedResponse = buildV2Phase1(cached);
         cachedResponse.selected_vertical = cached.vertical || "Other";
 
-        const detection = cached.verified_facts?._detection || {};
-
-        if (detection.detected_vertical || detection.other_descriptor) {
-          // New report with stored detection — use it
-          cachedResponse.detected_vertical = detection.detected_vertical || null;
-          cachedResponse.detection_method = detection.detection_method || null;
-          cachedResponse.other_descriptor = detection.other_descriptor || null;
-          cachedResponse.other_confidence = detection.other_confidence || null;
-        } else {
-          // Old report without detection — run it now (title fetch + keyword, no LLM)
-          const cachedTitle = await fetchPageTitle(dns.domain);
-          if (cachedTitle) {
-            const keywordMatch = inferVerticalFromTitle(cachedTitle);
-            if (keywordMatch !== "Other") {
-              cachedResponse.detected_vertical = keywordMatch;
-              cachedResponse.detection_method = "keyword";
-            } else {
-              // No keyword match — extract and classify descriptor (1 LLM call)
-              const brandName = cached.brand_name || await fetchBrandName(dns.domain);
-              const { descriptor: rawDescriptor, confidence } = extractBusinessDescriptor(
-                cachedTitle, null, dns.domain, brandName,
+        // Always run detection on cached reports (title fetch is fast)
+        const cachedTitle = await fetchPageTitle(dns.domain);
+        if (cachedTitle) {
+          const keywordMatch = inferVerticalFromTitle(cachedTitle);
+          if (keywordMatch !== "Other") {
+            cachedResponse.detected_vertical = keywordMatch;
+            cachedResponse.detection_method = "keyword";
+          } else {
+            // No keyword match — extract and classify descriptor (1 LLM call)
+            const brandName = cached.brand_name || await fetchBrandName(dns.domain);
+            const { descriptor: rawDescriptor, confidence } = extractBusinessDescriptor(
+              cachedTitle, null, dns.domain, brandName,
+            );
+            if (rawDescriptor && confidence >= 0.5) {
+              const { descriptor: classifiedDescriptor } = await classifyDescriptor(
+                rawDescriptor, cachedTitle, null,
               );
-              if (rawDescriptor && confidence >= 0.5) {
-                const { descriptor: classifiedDescriptor } = await classifyDescriptor(
-                  rawDescriptor, cachedTitle, null,
-                );
-                cachedResponse.other_descriptor = classifiedDescriptor;
-                cachedResponse.other_confidence = confidence;
-              }
+              cachedResponse.other_descriptor = classifiedDescriptor;
+              cachedResponse.other_confidence = confidence;
             }
           }
         }
@@ -263,15 +253,7 @@ export async function POST(req: NextRequest) {
       citability: scores.citability,
       findings,
       topProblems,
-      verifiedFacts: {
-        ...facts,
-        _detection: {
-          detected_vertical: detectedVertical,
-          detection_method: detectionMethod,
-          other_descriptor: otherDescriptor,
-          other_confidence: otherConfidence,
-        },
-      },
+      verifiedFacts: facts,
       brandName,
       vertical: effectiveVertical,
       region,

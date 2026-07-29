@@ -656,16 +656,10 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Read detection metadata from report
-    const detection = report.verified_facts?._detection || {};
-
     return json({
       reportId: report.id,
       status: "completed",
       providerStatus: providerStatuses,
-      // Detection metadata (always present)
-      detected_vertical: detection.detected_vertical || null,
-      detection_method: detection.detection_method || null,
       selected_vertical: report.vertical || "Other",
       // mentionRate and queriesTested are GATED — served only via GET /report/[id] after unlock
     });
