@@ -149,20 +149,20 @@ export async function POST(req: NextRequest) {
           if (keywordMatch !== "Other") {
             cachedResponse.detected_vertical = keywordMatch;
             cachedResponse.detection_method = "keyword";
-          } else {
-            // No keyword match — extract and classify descriptor (1 LLM call)
-            const brandName = cached.brand_name || await fetchBrandName(dns.domain);
-            const cachedDesc = cached.verified_facts?.meta?.description || null;
-            const { descriptor: rawDescriptor, confidence } = extractBusinessDescriptor(
-              cachedTitle, cachedDesc, dns.domain, brandName,
+          }
+
+          // Always classify descriptor (even if keyword matched)
+          const brandName = cached.brand_name || await fetchBrandName(dns.domain);
+          const cachedDesc = cached.verified_facts?.meta?.description || null;
+          const { descriptor: rawDescriptor, confidence } = extractBusinessDescriptor(
+            cachedTitle, cachedDesc, dns.domain, brandName,
+          );
+          if (rawDescriptor && confidence >= 0.5) {
+            const { descriptor: classifiedDescriptor } = await classifyDescriptor(
+              rawDescriptor, cachedTitle, cachedDesc,
             );
-            if (rawDescriptor && confidence >= 0.5) {
-              const { descriptor: classifiedDescriptor } = await classifyDescriptor(
-                rawDescriptor, cachedTitle, null,
-              );
-              cachedResponse.other_descriptor = classifiedDescriptor;
-              cachedResponse.other_confidence = confidence;
-            }
+            cachedResponse.other_descriptor = classifiedDescriptor;
+            cachedResponse.other_confidence = confidence;
           }
         }
 
@@ -194,22 +194,19 @@ export async function POST(req: NextRequest) {
 
     if (!vertical || vertical === "Other") {
       // Step 1: Try keyword matching (free, instant) — informational only
-      // The detected vertical is returned as metadata; effectiveVertical stays
-      // "Other" until the frontend confirms via the confirmation screen.
       if (rawTitle) {
         const keywordMatch = inferVerticalFromTitle(rawTitle);
         if (keywordMatch !== "Other") {
           detectedVertical = keywordMatch;
           detectionMethod = "keyword";
-          // effectiveVertical stays "Other" — frontend must confirm
         }
       }
 
-      // Step 2: If no keyword match, extract and classify descriptor for "Other" path
-      if (!detectedVertical && rawTitle) {
+      // Step 2: Always classify descriptor when vertical is "Other"
+      // (even if keyword matched — the keyword is a proposal, not a result)
+      if (rawTitle) {
         const { descriptor: rawDescriptor, confidence } = extractBusinessDescriptor(rawTitle, facts.meta.description, dns.domain, brandName);
         if (rawDescriptor && confidence >= 0.5) {
-          // Classify raw descriptor into proper German business type (1 LLM call)
           const { descriptor: classifiedDescriptor } = await classifyDescriptor(
             rawDescriptor, rawTitle, facts.meta.description,
           );
