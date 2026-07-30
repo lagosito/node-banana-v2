@@ -192,7 +192,19 @@ export async function generateQuestions(
     normalizedTokens.add(brandNorm);
     normalizedTokens.add(reUmlaut(brandNorm));
 
-    const tokenList = [...normalizedTokens];
+    // CRITICAL: Remove tokens that match the region — the prompt requires
+    // the region name in every question, so filtering it would reject all questions.
+    // e.g. brand "Landgang Brauerei Hamburg" region "Hamburg" → remove "hamburg"
+    const regionNorm = normalizeForGuard(region);
+    const tokenList = [...normalizedTokens].filter((t) => {
+      const tNorm = normalizeForGuard(t);
+      // Skip tokens ≤3 chars (too generic: "dm", "ag") — except if they're
+      // distinctive brand tokens from the LLM
+      if (tNorm.length <= 3 && !brandTokens.includes(t)) return false;
+      // Skip tokens that match the region
+      if (tNorm === regionNorm || regionNorm.includes(tNorm) || tNorm.includes(regionNorm)) return false;
+      return true;
+    });
 
     // Filter questions through brand guard
     const filtered = filterQuestions(questions, tokenList);

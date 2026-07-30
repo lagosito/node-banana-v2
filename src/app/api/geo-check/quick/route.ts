@@ -322,13 +322,10 @@ export async function POST(req: NextRequest) {
       } else {
         // Generation failed or 0 questions — fallback will happen in /llm
         console.warn("[GEO-Check] Question generation returned no usable questions");
-        (response as any)._question_gen_note = "no usable questions from generation";
       }
     } catch (err) {
       console.error("[GEO-Check] Question generation error:", err);
       // Non-fatal — /llm will use fallback prompts
-      // TEMP: include error in response for debugging
-      (response as any)._question_gen_error = err instanceof Error ? err.message : String(err);
     }
 
     // Include in response
