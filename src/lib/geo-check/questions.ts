@@ -61,7 +61,7 @@ async function callGeminiFlashJSON(prompt: string): Promise<string> {
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
             temperature: 0.3,
-            maxOutputTokens: 1024,
+            maxOutputTokens: 2048,
           },
         }),
       },
