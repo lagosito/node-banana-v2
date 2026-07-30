@@ -250,12 +250,12 @@ export async function fetchBrandName(domain: string): Promise<string> {
 // ─── Brand Aliases ───
 
 const GENERIC = new Set(["weingut","winery","dr","dr.","home","startseite","willkommen","gmbh","co","kg","und"]);
-const deUmlaut = (s: string) => s
+export const deUmlaut = (s: string) => s
   .replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue").replace(/ß/g,"ss")
   .replace(/Ä/g,"Ae").replace(/Ö/g,"Oe").replace(/Ü/g,"Ue");
 
 // Inverse: ae→ä, oe→ö, ue→ü (for matching brands stored with ASCII umlauts)
-const reUmlaut = (s: string) => s
+export const reUmlaut = (s: string) => s
   .replace(/ae/g,"ä").replace(/oe/g,"ö").replace(/ue/g,"ü")
   .replace(/Ae/g,"Ä").replace(/Oe/g,"Ö").replace(/Ue/g,"Ü");
 

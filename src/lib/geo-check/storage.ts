@@ -49,6 +49,10 @@ export interface ReportRow {
   // T6: Other vertical descriptor
   prompts_used: string[] | null;
   vertical_resolved: string | null;
+  // V1: Generated questions from page content
+  generated_questions: string[] | null;
+  question_source: "generated" | "curated" | "descriptor" | null;
+  brand_tokens: string[] | null;
 }
 
 export type ProviderName = "gemini" | "openai" | "perplexity";
@@ -181,32 +185,50 @@ export async function setLlmResults(
     composite_breakdown?: any;
     prompts_used?: string[];
     vertical_resolved?: string;
+    question_source?: "generated" | "curated" | "descriptor";
   },
 ): Promise<void> {
   const sb = supabase();
   if (!sb) return;
 
-  const { error } = await sb
+  const updatePayload: Record<string, any> = {
+    llm_results: data.llm_results,
+    mention_rate: data.mention_rate,
+    queries_tested: data.queries_tested,
+    quality_meta: data.quality_meta ?? null,
+    recommendations: data.recommendations ?? null,
+    timings: data.timings ?? null,
+    top_competitor: data.top_competitor ?? null,
+    top_competitor_mentions: data.top_competitor_mentions ?? 0,
+    top_competitors: data.top_competitors ?? null,
+    visibility_summary: data.visibility_summary ?? null,
+    analysis_details: data.analysis_details ?? null,
+    composite_score: data.composite_score ?? null,
+    composite_breakdown: data.composite_breakdown ?? null,
+    prompts_used: data.prompts_used ?? null,
+    vertical_resolved: data.vertical_resolved ?? null,
+    status: "completed",
+  };
+
+  // question_source: save if provided (column may not exist yet — migration pending)
+  if (data.question_source !== undefined) {
+    updatePayload.question_source = data.question_source;
+  }
+
+  let { error } = await sb
     .from("geo_check_reports")
-    .update({
-      llm_results: data.llm_results,
-      mention_rate: data.mention_rate,
-      queries_tested: data.queries_tested,
-      quality_meta: data.quality_meta ?? null,
-      recommendations: data.recommendations ?? null,
-      timings: data.timings ?? null,
-      top_competitor: data.top_competitor ?? null,
-      top_competitor_mentions: data.top_competitor_mentions ?? 0,
-      top_competitors: data.top_competitors ?? null,
-      visibility_summary: data.visibility_summary ?? null,
-      analysis_details: data.analysis_details ?? null,
-      composite_score: data.composite_score ?? null,
-      composite_breakdown: data.composite_breakdown ?? null,
-      prompts_used: data.prompts_used ?? null,
-      vertical_resolved: data.vertical_resolved ?? null,
-      status: "completed",
-    })
+    .update(updatePayload)
     .eq("id", id);
+
+  // If update fails (e.g. column doesn't exist yet), retry without new columns
+  if (error && data.question_source !== undefined) {
+    console.warn(`[GEO-Check] setLlmResults: retrying without question_source (${error.message})`);
+    delete updatePayload.question_source;
+    ({ error } = await sb
+      .from("geo_check_reports")
+      .update(updatePayload)
+      .eq("id", id));
+  }
 
   if (error) throw new Error(`setLlmResults: ${error.message}`);
 }
@@ -219,6 +241,30 @@ export async function updateReportVertical(id: string, vertical: string): Promis
     .update({ vertical })
     .eq("id", id);
   if (error) throw new Error(`updateReportVertical: ${error.message}`);
+}
+
+export async function updateGeneratedQuestions(
+  id: string,
+  data: {
+    generated_questions: string[];
+    question_source: "generated" | "curated" | "descriptor";
+    brand_tokens: string[];
+  },
+): Promise<void> {
+  const sb = supabase();
+  if (!sb) return;
+  const { error } = await sb
+    .from("geo_check_reports")
+    .update({
+      generated_questions: data.generated_questions,
+      question_source: data.question_source,
+      brand_tokens: data.brand_tokens,
+    })
+    .eq("id", id);
+  // Column may not exist yet (migration pending) — log but don't throw
+  if (error) {
+    console.warn(`[GEO-Check] updateGeneratedQuestions: ${error.message} (migration may be pending)`);
+  }
 }
 
 // ─── Read ───

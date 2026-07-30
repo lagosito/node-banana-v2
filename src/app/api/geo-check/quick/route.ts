@@ -22,7 +22,9 @@ import {
   getReport,
   getReportByDomain,
   checkRateLimitDb,
+  updateGeneratedQuestions,
 } from "@/lib/geo-check/storage";
+import { generateQuestions } from "@/lib/geo-check/questions";
 
 // ─── CORS ───
 
@@ -280,6 +282,55 @@ export async function POST(req: NextRequest) {
       response.other_descriptor = otherDescriptor;
       response.other_confidence = otherConfidence;
     }
+
+    // ─── V1: Generate questions from page content ───
+    let generatedQuestions: string[] | null = null;
+    let questionSource: "generated" | "curated" | "descriptor" | null = null;
+    let brandTokensList: string[] | null = null;
+
+    try {
+      const bodyText1500 = (facts as any)?.content?.bodyText?.slice(0, 1500) || "";
+      const genResult = await generateQuestions({
+        title: rawTitle || "",
+        metaDescription: facts.meta?.description || null,
+        bodyText1500,
+        brand: brandName,
+        region: region || "Deutschland",
+      });
+
+      if (genResult && genResult.questions.length >= 6) {
+        generatedQuestions = genResult.questions;
+        questionSource = "generated";
+        brandTokensList = genResult.brandTokens;
+
+        // Save to report (non-blocking — log if migration pending)
+        await updateGeneratedQuestions(reportId, {
+          generated_questions: generatedQuestions,
+          question_source: questionSource,
+          brand_tokens: brandTokensList,
+        });
+      } else if (genResult && genResult.questions.length > 0) {
+        // Got some but less than 6 — still save, will fallback in /llm
+        generatedQuestions = genResult.questions;
+        questionSource = "generated";
+        brandTokensList = genResult.brandTokens;
+        await updateGeneratedQuestions(reportId, {
+          generated_questions: generatedQuestions,
+          question_source: questionSource,
+          brand_tokens: brandTokensList,
+        });
+      } else {
+        // Generation failed or 0 questions — fallback will happen in /llm
+        console.warn("[GEO-Check] Question generation returned no usable questions");
+      }
+    } catch (err) {
+      console.error("[GEO-Check] Question generation error:", err);
+      // Non-fatal — /llm will use fallback prompts
+    }
+
+    // Include in response
+    response.generated_questions = generatedQuestions;
+    response.question_source = questionSource;
 
     return json(response, { headers: { "x-ratelimit-limit": "5", "x-ratelimit-remaining": String(rateLimit.remaining) } });
   } catch (err: unknown) {

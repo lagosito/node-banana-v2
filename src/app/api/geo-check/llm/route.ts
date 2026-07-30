@@ -217,8 +217,17 @@ export async function POST(req: NextRequest) {
     let prompts: string[];
     let verticalResolved = reportVertical;
     let otherDescriptor: string | null = null;
+    let questionSource: "generated" | "curated" | "descriptor" = "descriptor";
 
-    if (reportVertical === "Other") {
+    // V1 priority: generated questions from /quick → curated → descriptor
+    const generatedQs = report.generated_questions;
+    if (generatedQs && Array.isArray(generatedQs) && generatedQs.length >= 6) {
+      // Use the 6 generated questions from page content
+      prompts = generatedQs.slice(0, 6);
+      questionSource = "generated";
+      verticalResolved = `Generated (${reportVertical})`;
+      console.log(`[GEO-Check] Using ${prompts.length} generated questions from /quick`);
+    } else if (reportVertical === "Other") {
       // C2: Extract descriptor from crawl — reject if confidence too low
       const metaDesc = report.verified_facts?.meta?.description || null;
       const { descriptor: rawDescriptor, confidence } = extractBusinessDescriptor(rawTitle || "", metaDesc, report.domain, brandName);
@@ -240,6 +249,7 @@ export async function POST(req: NextRequest) {
 
       // Build descriptor-based prompts
       prompts = buildOtherPrompts(classifiedDescriptor, region);
+      questionSource = "descriptor";
       verticalResolved = `Other (descriptor: ${classifiedDescriptor})`;
     } else {
       // Check if vertical matches a curated set
@@ -247,6 +257,7 @@ export async function POST(req: NextRequest) {
       if (normalized !== "Other" && PROMPTS_BY_VERTICAL[normalized]) {
         // Curated prompts from Prompt Library (6 of 12)
         prompts = buildCheckPrompts(normalized, region);
+        questionSource = "curated";
         verticalResolved = normalized;
       } else {
         // Free text that doesn't match any curated vertical → generate from text
@@ -669,6 +680,7 @@ export async function POST(req: NextRequest) {
       recommendations: findings,
       prompts_used: prompts, // C1: exact prompts sent to providers
       vertical_resolved: verticalResolved, // C3: what vertical was actually used
+      question_source: questionSource, // V1: which prompt path was used
       timings: {
         ...report.timings,
         llmMs: tEnd - t0,
