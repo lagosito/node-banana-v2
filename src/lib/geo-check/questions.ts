@@ -19,7 +19,6 @@ const GENERATION_PROMPT = `Du analysierst die Website eines Unternehmens, um des
 WEBSITE-DATEN
 Titel: {title}
 Beschreibung: {meta_description}
-Textauszug: {body_text_1500_chars}
 
 MARKE: {brand}
 MARKT: {region}
@@ -31,7 +30,6 @@ um ein Unternehmen wie dieses zu finden.
 REGELN
 • Fehlerfreies Deutsch, Substantive gross geschrieben.
 • Die Marke "{brand}" darf in KEINER Frage vorkommen, auch nicht in Teilen.
-• Verwende KEINE Wortschöpfungen oder Eigennamen von der Website.
 • Frage nach der Kategorie, nicht nach der Firma.
 • Passende Granularität: bei einer Marke nach Marken fragen, bei einem
     Laden nach Anbietern, bei einem Hersteller nach Herstellern.
@@ -61,7 +59,7 @@ async function callGeminiFlashJSON(prompt: string): Promise<string> {
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
             temperature: 0.3,
-            maxOutputTokens: 2048,
+            maxOutputTokens: 4096,
           },
         }),
       },
@@ -145,7 +143,6 @@ export async function generateQuestions(
   const prompt = GENERATION_PROMPT
     .replace("{title}", title)
     .replace("{meta_description}", metaDescription || "(keine)")
-    .replace("{body_text_1500_chars}", bodyText1500.slice(0, 1500))
     .replace(/{brand}/g, brand)
     .replace(/{region}/g, region);
 
