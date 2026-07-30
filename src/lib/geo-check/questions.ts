@@ -9,6 +9,7 @@ export interface GeneratedQuestionsResult {
   questions: string[];
   brandTokens: string[];
   source: "generated" | "curated" | "descriptor";
+  _rawGemini?: string; // debug: raw Gemini response
 }
 
 // ─── Generation prompt ───
@@ -148,14 +149,15 @@ export async function generateQuestions(
     .replace(/{brand}/g, brand)
     .replace(/{region}/g, region);
 
+  let rawResponse = "";
   try {
-    const raw = await callGeminiFlashJSON(prompt);
+    rawResponse = await callGeminiFlashJSON(prompt);
 
     // Parse JSON response — handle markdown code blocks
     let parsed: { fragen?: string[]; markentoken?: string[] };
     try {
       // Strip markdown code fences if present
-      let cleaned = raw.trim();
+      let cleaned = rawResponse.trim();
       if (cleaned.startsWith("```")) {
         cleaned = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
       }
@@ -167,8 +169,9 @@ export async function generateQuestions(
         parsed = JSON.parse(cleaned);
       }
     } catch {
-      console.error("[GEO-Check] Question generation: invalid JSON response:", raw.slice(0, 300));
-      return null;
+      console.error("[GEO-Check] Question generation: invalid JSON response:", rawResponse.slice(0, 300));
+      // Return with raw for debugging instead of null
+      return { questions: [], brandTokens: [], source: "generated", _rawGemini: rawResponse.slice(0, 500) };
     }
 
     const questions = parsed.fragen;
@@ -176,7 +179,7 @@ export async function generateQuestions(
 
     if (!questions || !Array.isArray(questions) || questions.length === 0) {
       console.error("[GEO-Check] Question generation: no questions in response. parsed:", JSON.stringify(parsed).slice(0, 300));
-      return null;
+      return { questions: [], brandTokens: [], source: "generated", _rawGemini: rawResponse.slice(0, 500) };
     }
 
     // Normalize brand tokens: add both umlaut directions
@@ -229,6 +232,7 @@ export async function generateQuestions(
     };
   } catch (err) {
     console.error("[GEO-Check] Question generation failed:", err);
-    return null;
+    // Return error info instead of null so caller can debug
+    return { questions: [], brandTokens: [], source: "generated", _rawGemini: `ERROR: ${err instanceof Error ? err.message : String(err)}` };
   }
 }
