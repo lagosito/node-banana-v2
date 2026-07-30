@@ -322,7 +322,7 @@ export async function POST(req: NextRequest) {
       } else {
         // Generation failed or 0 questions — fallback will happen in /llm
         console.warn("[GEO-Check] Question generation returned no usable questions");
-        (response as any)._qg_note = "gen returned null or <6 questions";
+        (response as any)._qg_note = `genResult=${JSON.stringify(genResult)?.slice(0,200)}`;
       }
     } catch (err) {
       console.error("[GEO-Check] Question generation error:", err);

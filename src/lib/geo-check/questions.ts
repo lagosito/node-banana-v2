@@ -167,7 +167,7 @@ export async function generateQuestions(
         parsed = JSON.parse(cleaned);
       }
     } catch {
-      console.error("[GEO-Check] Question generation: invalid JSON response:", raw.slice(0, 200));
+      console.error("[GEO-Check] Question generation: invalid JSON response:", raw.slice(0, 300));
       return null;
     }
 
@@ -175,7 +175,7 @@ export async function generateQuestions(
     const brandTokens = parsed.markentoken || [];
 
     if (!questions || !Array.isArray(questions) || questions.length === 0) {
-      console.error("[GEO-Check] Question generation: no questions in response");
+      console.error("[GEO-Check] Question generation: no questions in response. parsed:", JSON.stringify(parsed).slice(0, 300));
       return null;
     }
 
