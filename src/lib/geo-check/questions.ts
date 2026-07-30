@@ -153,18 +153,17 @@ export async function generateQuestions(
   try {
     rawResponse = await callGeminiFlashJSON(prompt);
 
-    // Parse JSON response — handle markdown code blocks
+    // Parse JSON response — extract JSON object, ignore everything else
     let parsed: { fragen?: string[]; markentoken?: string[] };
     try {
-      // Strip markdown code fences if present (handle \n, \r\n)
-      let cleaned = rawResponse.trim();
-      cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?\s*```$/, "");
-      // Try to extract JSON object from text
-      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        parsed = JSON.parse(jsonMatch[0]);
+      // Find the first { and last } to extract JSON
+      const firstBrace = rawResponse.indexOf("{");
+      const lastBrace = rawResponse.lastIndexOf("}");
+      if (firstBrace >= 0 && lastBrace > firstBrace) {
+        const jsonStr = rawResponse.substring(firstBrace, lastBrace + 1);
+        parsed = JSON.parse(jsonStr);
       } else {
-        parsed = JSON.parse(cleaned);
+        throw new Error("No JSON object found in response");
       }
     } catch {
       console.error("[GEO-Check] Question generation: invalid JSON response:", rawResponse.slice(0, 300));
