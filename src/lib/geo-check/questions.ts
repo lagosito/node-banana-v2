@@ -9,7 +9,6 @@ export interface GeneratedQuestionsResult {
   questions: string[];
   brandTokens: string[];
   source: "generated" | "curated" | "descriptor";
-  _rawGemini?: string; // debug: raw Gemini response
 }
 
 // ─── Generation prompt ───
@@ -165,7 +164,7 @@ export async function generateQuestions(
     } catch {
       console.error("[GEO-Check] Question generation: invalid JSON response:", rawResponse.slice(0, 300));
       // Return with raw for debugging instead of null
-      return { questions: [], brandTokens: [], source: "generated", _rawGemini: rawResponse.slice(0, 500) };
+      return { questions: [], brandTokens: [], source: "generated" };
     }
 
     const questions = parsed.fragen;
@@ -173,7 +172,7 @@ export async function generateQuestions(
 
     if (!questions || !Array.isArray(questions) || questions.length === 0) {
       console.error("[GEO-Check] Question generation: no questions in response. parsed:", JSON.stringify(parsed).slice(0, 300));
-      return { questions: [], brandTokens: [], source: "generated", _rawGemini: rawResponse.slice(0, 500) };
+      return { questions: [], brandTokens: [], source: "generated" };
     }
 
     // Normalize brand tokens: add both umlaut directions
@@ -227,6 +226,6 @@ export async function generateQuestions(
   } catch (err) {
     console.error("[GEO-Check] Question generation failed:", err);
     // Return error info instead of null so caller can debug
-    return { questions: [], brandTokens: [], source: "generated", _rawGemini: `ERROR: ${err instanceof Error ? err.message : String(err)}` };
+    return { questions: [], brandTokens: [], source: "generated" };
   }
 }
