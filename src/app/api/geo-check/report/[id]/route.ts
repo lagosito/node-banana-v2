@@ -134,6 +134,9 @@ export async function GET(
       // T6: Other vertical
       promptsUsed: report.prompts_used || null,
       verticalResolved: report.vertical_resolved || null,
+      // V1: Generated questions
+      generatedQuestions: report.generated_questions || null,
+      questionSource: report.question_source || null,
     };
 
     return json(response);
