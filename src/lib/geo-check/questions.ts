@@ -156,11 +156,9 @@ export async function generateQuestions(
     // Parse JSON response — handle markdown code blocks
     let parsed: { fragen?: string[]; markentoken?: string[] };
     try {
-      // Strip markdown code fences if present
+      // Strip markdown code fences if present (handle \n, \r\n)
       let cleaned = rawResponse.trim();
-      if (cleaned.startsWith("```")) {
-        cleaned = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
-      }
+      cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?\s*```$/, "");
       // Try to extract JSON object from text
       const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
