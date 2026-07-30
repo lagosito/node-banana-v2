@@ -46,7 +46,7 @@ async function callGeminiFlashJSON(prompt: string): Promise<string> {
   if (!key) throw new Error("GEMINI_API_KEY not configured");
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
+  const timeout = setTimeout(() => controller.abort(), 30_000);
 
   try {
     const res = await fetch(
