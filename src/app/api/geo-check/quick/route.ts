@@ -84,6 +84,10 @@ function buildV2Phase1(row: any): Record<string, unknown> {
     // Phase 2 not done yet
     status: row.status,
     providerStatus: row.provider_status || {},
+    // Generated questions (from DB or null)
+    generated_questions: row.generated_questions || null,
+    question_source: row.question_source || null,
+    brand_tokens: row.brand_tokens || null,
   };
 }
 
@@ -331,6 +335,7 @@ export async function POST(req: NextRequest) {
     // Include in response
     response.generated_questions = generatedQuestions;
     response.question_source = questionSource;
+    response.brand_tokens = brandTokensList;
 
     return json(response, { headers: { "x-ratelimit-limit": "5", "x-ratelimit-remaining": String(rateLimit.remaining) } });
   } catch (err: unknown) {

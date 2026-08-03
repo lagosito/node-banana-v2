@@ -135,8 +135,9 @@ export async function GET(
       promptsUsed: report.prompts_used || null,
       verticalResolved: report.vertical_resolved || null,
       // V1: Generated questions
-      generatedQuestions: report.generated_questions || null,
-      questionSource: report.question_source || null,
+      generated_questions: report.generated_questions || null,
+      question_source: report.question_source || null,
+      brand_tokens: report.brand_tokens || null,
     };
 
     return json(response);
