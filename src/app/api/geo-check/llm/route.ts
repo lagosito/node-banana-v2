@@ -540,6 +540,16 @@ export async function POST(req: NextRequest) {
     // Renderer expects: {category, finding, recommendation, priority}
     const findings: Array<{category: string; finding: string; recommendation: string; priority: number}> = [];
 
+    // Crawl blocked finding — top priority, actionable
+    if (report.crawl_failed && report.crawl_failed_reason === "blocked") {
+      findings.push({
+        category: "Zitierung",
+        finding: "Ihre Website blockiert automatisierten Zugriff. Dies betrifft GPTBot (OpenAI), ClaudeBot (Anthropic), PerplexityBot und andere KI-Crawler, die Ihre Inhalte indexieren.",
+        recommendation: "Entfernen Sie die Sperrung für diese Crawler in Ihrer robots.txt oder Ihrem CDN/WAF. Ohne Zugang können KI-Systeme Ihre Inhalte nicht zitieren und Ihre Marke nicht in Antworten empfehlen.",
+        priority: 1,
+      });
+    }
+
     if (mentionRate !== null && mentionRate < 0.3) {
       findings.push({
         category: "Sichtbarkeit",
