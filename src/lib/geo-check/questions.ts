@@ -8,7 +8,7 @@ import { deUmlaut, reUmlaut } from "./index";
 export interface GeneratedQuestionsResult {
   questions: string[];
   brandTokens: string[];
-  source: "generated" | "curated" | "descriptor";
+  source: "generated" | "curated" | "descriptor" | "user_industry";
 }
 
 // ─── Generation prompt ───
@@ -234,5 +234,102 @@ export async function generateQuestions(
     console.error("[GEO-Check] Question generation failed:", err);
     // Return error info instead of null so caller can debug
     return { questions: [], brandTokens: [], source: "generated" };
+  }
+}
+
+// ─── Industry-based generation (for crawl_failed reports) ───
+
+const INDUSTRY_PROMPT = `Du analysierst ein Unternehmen, um dessen Sichtbarkeit in KI-Antworten zu messen.
+
+UNTERNEHMEN
+Marke: {brand}
+Branche: {industry}
+Markt: {region}
+
+AUFGABE
+Schreibe genau 6 Fragen, die ein potenzieller Kunde einer KI stellen würde,
+um ein Unternehmen wie dieses zu finden.
+
+REGELN
+• Fehlerfreies Deutsch, Substantive gross geschrieben.
+• Die Marke "{brand}" darf in KEINER Frage vorkommen, auch nicht in Teilen.
+• Frage nach der Branche "{industry}", nicht nach der Firma.
+• Passende Granularität: bei einer Marke nach Marken fragen, bei einem
+    Laden nach Anbietern, bei einem Hersteller nach Herstellern.
+• Der Markt "{region}" muss in jeder Frage vorkommen.
+• Variiere die Absicht: Empfehlung, Vergleich, Kauf, Information.
+
+Antworte NUR mit JSON:
+{"fragen": [6 Strings], "markentoken": [Tokens der Marke, die in keiner Frage vorkommen dürfen, ohne Gattungsbegriffe]}`;
+
+/**
+ * Generate 6 questions from user-provided industry text (no crawl data).
+ * Used when crawl_failed and the user supplies their industry manually.
+ */
+export async function generateQuestionsFromIndustry(params: {
+  industry: string;
+  brand: string;
+  region: string;
+}): Promise<GeneratedQuestionsResult | null> {
+  const { industry, brand, region } = params;
+
+  const prompt = INDUSTRY_PROMPT
+    .replace(/{brand}/g, brand)
+    .replace(/{industry}/g, industry)
+    .replace(/{region}/g, region);
+
+  try {
+    const rawResponse = await callGeminiFlashJSON(prompt);
+
+    let parsed: { fragen?: string[]; markentoken?: string[] };
+    try {
+      const firstBrace = rawResponse.indexOf("{");
+      const lastBrace = rawResponse.lastIndexOf("}");
+      if (firstBrace >= 0 && lastBrace > firstBrace) {
+        parsed = JSON.parse(rawResponse.substring(firstBrace, lastBrace + 1));
+      } else {
+        throw new Error("No JSON object found");
+      }
+    } catch {
+      console.error("[GEO-Check] Industry question generation: invalid JSON:", rawResponse.slice(0, 300));
+      return { questions: [], brandTokens: [], source: "user_industry" };
+    }
+
+    const questions = parsed.fragen || [];
+    const brandTokens = parsed.markentoken || [];
+
+    if (questions.length === 0) {
+      return { questions: [], brandTokens: [], source: "user_industry" };
+    }
+
+    // Normalize brand tokens (same logic as generateQuestions)
+    const normalizedTokens = new Set<string>();
+    for (const token of brandTokens) {
+      normalizedTokens.add(token);
+      normalizedTokens.add(deUmlaut(token));
+      normalizedTokens.add(reUmlaut(token));
+    }
+    const brandNorm = deUmlaut(brand.toLowerCase());
+    normalizedTokens.add(brandNorm);
+    normalizedTokens.add(reUmlaut(brandNorm));
+
+    const regionNorm = normalizeForGuard(region);
+    const tokenList = [...normalizedTokens].filter((t) => {
+      const tNorm = normalizeForGuard(t);
+      if (tNorm.length < 4) return false;
+      if (tNorm === regionNorm || regionNorm.includes(tNorm) || tNorm.includes(regionNorm)) return false;
+      return true;
+    });
+
+    const filtered = filterQuestions(questions, tokenList);
+
+    return {
+      questions: filtered.slice(0, 6),
+      brandTokens: tokenList,
+      source: "user_industry",
+    };
+  } catch (err) {
+    console.error("[GEO-Check] Industry question generation failed:", err);
+    return { questions: [], brandTokens: [], source: "user_industry" };
   }
 }

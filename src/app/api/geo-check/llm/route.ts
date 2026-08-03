@@ -11,9 +11,11 @@ import {
   setProviderStatus,
   setLlmResults,
   updateReportVertical,
+  updateGeneratedQuestions,
 } from "@/lib/geo-check/storage";
 import type { ProviderName } from "@/lib/geo-check/storage";
 import { reviewReport } from "@/lib/geo-check/reviewer";
+import { generateQuestionsFromIndustry } from "@/lib/geo-check/questions";
 
 // ─── CORS ───
 export const maxDuration = 300; // Vercel Pro — 6 prompts x 3 providers need ~5min
@@ -176,7 +178,7 @@ function isProviderEnabled(name: ProviderName): boolean {
 
 export async function POST(req: NextRequest) {
   try {
-    const { reportId, vertical: confirmedVertical } = await req.json();
+    const { reportId, vertical: confirmedVertical, industry } = await req.json();
 
     if (!reportId) {
       return json({ error: "reportId is required" }, { status: 400 });
@@ -209,7 +211,7 @@ export async function POST(req: NextRequest) {
     await setReportStatus(report.id, "running");
 
     const brandName = report.brand_name || await fetchBrandName(report.domain);
-    const rawTitle = await fetchPageTitle(report.domain);
+    const rawTitle = report.crawl_failed ? null : await fetchPageTitle(report.domain);
     const reportVertical = report.vertical || "Other";
     const region = report.region || "Deutschland";
 
@@ -217,13 +219,52 @@ export async function POST(req: NextRequest) {
     let prompts: string[];
     let verticalResolved = reportVertical;
     let otherDescriptor: string | null = null;
-    let questionSource: "generated" | "curated" | "descriptor" = "descriptor";
+    let questionSource: "generated" | "curated" | "descriptor" | "user_industry" = "descriptor";
 
+    // ─── Crawl failed path: use industry text from user ───
+    if (report.crawl_failed) {
+      if (!industry || typeof industry !== "string" || industry.trim().length === 0) {
+        await setReportStatus(report.id, "pending");
+        return json({
+          error: "Die Website konnte nicht ausgelesen werden. Bitte geben Sie Ihre Branche ein, damit wir die KI-Sichtbarkeit messen können.",
+          errorType: "industry_required",
+        }, { status: 422 });
+      }
+
+      // Generate questions from industry text
+      const brandFromDomain = report.domain.replace(/\.[^.]+$/, "").replace(/^www\./, "");
+      const brandForGuard = report.brand_name || brandFromDomain.charAt(0).toUpperCase() + brandFromDomain.slice(1);
+
+      const genResult = await generateQuestionsFromIndustry({
+        industry: industry.trim(),
+        brand: brandForGuard,
+        region,
+      });
+
+      if (!genResult || genResult.questions.length === 0) {
+        await setReportStatus(report.id, "error");
+        return json({
+          error: "Wir konnten keine Fragen generieren. Bitte versuchen Sie es erneut.",
+          errorType: "question_generation_failed",
+        }, { status: 500 });
+      }
+
+      prompts = genResult.questions;
+      questionSource = "user_industry";
+      verticalResolved = `Industry (${industry.trim()})`;
+
+      // Save generated questions + brand tokens to report
+      await updateGeneratedQuestions(report.id, {
+        generated_questions: prompts,
+        question_source: "user_industry",
+        brand_tokens: genResult.brandTokens,
+      });
+      report.generated_questions = prompts;
+      report.question_source = "user_industry";
+      report.brand_tokens = genResult.brandTokens;
     // V1 priority: generated questions from /quick → curated → descriptor
-    const generatedQs = report.generated_questions;
-    if (generatedQs && Array.isArray(generatedQs) && generatedQs.length >= 6) {
-      // Use the 6 generated questions from page content
-      prompts = generatedQs.slice(0, 6);
+    } else if (report.generated_questions && Array.isArray(report.generated_questions) && report.generated_questions.length >= 6) {
+      prompts = report.generated_questions.slice(0, 6);
       questionSource = "generated";
       verticalResolved = `Generated (${reportVertical})`;
       console.log(`[GEO-Check] Using ${prompts.length} generated questions from /quick`);
@@ -394,7 +435,7 @@ export async function POST(req: NextRequest) {
           }
           // Persist full analysis details
           allAnalysisDetails[resp.id] = {
-            mention_position: analysis?.mention_position || 0,
+            mention_position: analysis?.mention_position ?? null,
             sentiment: analysis?.sentiment || "n/a",
             brand_domain_cited: analysis?.brand_domain_cited || false,
             cited_domains: analysis?.cited_domains || [],
@@ -597,7 +638,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Update AI visibility score
-    const categoryScores = { ...report.category_scores };
+    const categoryScores = report.category_scores ? { ...report.category_scores } : {} as any;
     if (mentionRate !== null && totalQueries > 0) {
       categoryScores.aiVisibility = {
         score: Math.round(mentionRate * 100),
@@ -614,7 +655,7 @@ export async function POST(req: NextRequest) {
       };
     }
 
-    // Anti-hallucination review (only if Gemini available)
+    // Anti-hallucination review (skip when no technical data — crawl_failed)
     let qualityMeta = null;
     try {
       const findings: Array<{ type: "finding" | "recommendation"; text: string; category?: string }> = [];
@@ -631,14 +672,16 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      const review = await reviewReport(
-        report.verified_facts,
-        findings,
-        `Ihre Website ${report.domain} erreicht ${report.overall_score}/100 Punkte.`,
-        `Ihre Website ${report.domain} erreicht ${report.overall_score}/100 Punkte.`,
-        categoryScores as any,
-      );
-      qualityMeta = review.qualityMeta;
+      if (report.overall_score != null) {
+        const review = await reviewReport(
+          report.verified_facts,
+          findings,
+          `Ihre Website ${report.domain} erreicht ${report.overall_score}/100 Punkte.`,
+          `Ihre Website ${report.domain} erreicht ${report.overall_score}/100 Punkte.`,
+          categoryScores as any,
+        );
+        qualityMeta = review.qualityMeta;
+      }
     } catch (err) {
       console.error("Review failed:", err);
     }

@@ -68,11 +68,11 @@ export async function GET(
     const zusammenfassung = report.visibility_summary || "";
     const breakdown = report.composite_breakdown || [];
     // ─── FIX 1: Score uses explicit null check, never borrows from technicalScore ───
-    const score = report.composite_score != null ? report.composite_score : report.overall_score ?? 0;
+    const score = report.composite_score != null ? report.composite_score : report.overall_score ?? null;
     const compositeScoreForFrontend = report.composite_score != null ? report.composite_score : null;
 
     // Score label for frontend color coding
-    const scoreLabel = score < 40 ? "Schwach" : score <= 70 ? "Mittel" : "Gut";
+    const scoreLabel = score == null ? null : score < 40 ? "Schwach" : score <= 70 ? "Mittel" : "Gut";
 
     // Vertical in German (frontend dropdown labels)
     const VERTICAL_DE: Record<string, string> = {
@@ -108,7 +108,7 @@ export async function GET(
       qualityMeta: report.quality_meta,
       llmResults: report.llm_results,
       topCompetitor: report.top_competitor || null,
-      topCompetitorMentions: report.top_competitor_mentions || 0,
+      topCompetitorMentions: report.top_competitor_mentions ?? null,
       topCompetitors: report.top_competitors || [],
       visibilitySummary: report.visibility_summary || null,
       // New v2 fields
@@ -127,7 +127,7 @@ export async function GET(
       vertical: verticalDE,
       region: report.region || "",
       date,
-      technicalScore: report.overall_score ?? 0,
+      technicalScore: report.overall_score ?? null,
       // Gate status (informational only)
       gated: false,
       emailCollected: report.unlocked,
@@ -138,6 +138,13 @@ export async function GET(
       generated_questions: report.generated_questions || null,
       question_source: report.question_source || null,
       brand_tokens: report.brand_tokens || null,
+      // Crawl failed fields
+      crawl_failed: report.crawl_failed ?? false,
+      crawl_failed_reason: report.crawl_failed_reason ?? null,
+      needs_industry_input: report.needs_industry_input ?? false,
+      crawl_failed_notice: report.crawl_failed
+        ? "Ihre Website konnte nicht ausgelesen werden, da sie automatisierten Zugriff blockiert. Die technische Analyse entfällt daher. Die Sichtbarkeit in KI-Antworten wurde vollständig gemessen."
+        : null,
     };
 
     return json(response);

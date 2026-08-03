@@ -51,8 +51,12 @@ export interface ReportRow {
   vertical_resolved: string | null;
   // V1: Generated questions from page content
   generated_questions: string[] | null;
-  question_source: "generated" | "curated" | "descriptor" | null;
+  question_source: "generated" | "curated" | "descriptor" | "user_industry" | null;
   brand_tokens: string[] | null;
+  // Crawl failed (sites with anti-bot protection)
+  crawl_failed: boolean;
+  crawl_failed_reason: string | null;
+  needs_industry_input: boolean;
 }
 
 export type ProviderName = "gemini" | "openai" | "perplexity";
@@ -75,8 +79,8 @@ export async function createReport(data: {
   url: string;
   resolvedUrl?: string;
   lang?: string;
-  overallScore: number;
-  categoryScores: any;
+  overallScore: number | null;
+  categoryScores: any | null;
   citability: any;
   findings: any;
   topProblems: any;
@@ -87,6 +91,9 @@ export async function createReport(data: {
   subpages?: string[];
   aiCrawlerFacts?: any;
   timings?: any;
+  crawlFailed?: boolean;
+  crawlFailedReason?: string;
+  needsIndustryInput?: boolean;
 }): Promise<{ id: string; shortSlug: string }> {
   const sb = supabase();
   if (!sb) throw new Error("Supabase not configured");
@@ -116,6 +123,9 @@ export async function createReport(data: {
         ai_crawler_facts: data.aiCrawlerFacts ?? null,
         timings: data.timings ?? null,
         expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        crawl_failed: data.crawlFailed ?? false,
+        crawl_failed_reason: data.crawlFailedReason ?? null,
+        needs_industry_input: data.needsIndustryInput ?? false,
       })
       .select("id, short_slug")
       .single();
@@ -185,7 +195,7 @@ export async function setLlmResults(
     composite_breakdown?: any;
     prompts_used?: string[];
     vertical_resolved?: string;
-    question_source?: "generated" | "curated" | "descriptor";
+    question_source?: "generated" | "curated" | "descriptor" | "user_industry";
   },
 ): Promise<void> {
   const sb = supabase();
@@ -199,7 +209,7 @@ export async function setLlmResults(
     recommendations: data.recommendations ?? null,
     timings: data.timings ?? null,
     top_competitor: data.top_competitor ?? null,
-    top_competitor_mentions: data.top_competitor_mentions ?? 0,
+    top_competitor_mentions: data.top_competitor_mentions ?? null,
     top_competitors: data.top_competitors ?? null,
     visibility_summary: data.visibility_summary ?? null,
     analysis_details: data.analysis_details ?? null,
@@ -247,7 +257,7 @@ export async function updateGeneratedQuestions(
   id: string,
   data: {
     generated_questions: string[];
-    question_source: "generated" | "curated" | "descriptor";
+    question_source: "generated" | "curated" | "descriptor" | "user_industry";
     brand_tokens: string[];
   },
 ): Promise<void> {

@@ -51,14 +51,14 @@ export async function OPTIONS() {
 // ─── Build v2 response (Phase 1 only — no LLM data) ───
 
 function buildV2Phase1(row: any): Record<string, unknown> {
-  const categoryScores = row.category_scores || null;
-  const overallScore = row.overall_score ?? 0;
+  const categoryScores = row.category_scores ?? null;
+  const overallScore = row.overall_score ?? null;
 
   return {
     reportId: row.id,
     shortSlug: row.short_slug,
     overallScore,
-    categoryScores: categoryScores
+    categoryScores: categoryScores != null
       ? Object.fromEntries(
           Object.entries(categoryScores).map(([key, cat]: [string, any]) => [
             key,
@@ -69,9 +69,11 @@ function buildV2Phase1(row: any): Record<string, unknown> {
     citability: row.citability
       ? { score: row.citability.score, breakdown: row.citability.breakdown, checks: (row.citability.checks || []).map(formatCheck) }
       : null,
-    verdictLabel: "Berechnet",
-    verdictHeadline: "Ihre technische Ausstattung wurde analysiert.",
-    summary: `Ihre Website ${row.domain} erreicht ${overallScore}/100 Punkte (technische Bewertung).`,
+    verdictLabel: overallScore != null ? "Berechnet" : null,
+    verdictHeadline: overallScore != null ? "Ihre technische Ausstattung wurde analysiert." : null,
+    summary: overallScore != null
+      ? `Ihre Website ${row.domain} erreicht ${overallScore}/100 Punkte (technische Bewertung).`
+      : null,
     topProblems: row.top_problems || [],
     aiCrawlerFacts: row.ai_crawler_facts,
     subpages: row.subpages || [],
@@ -79,11 +81,15 @@ function buildV2Phase1(row: any): Record<string, unknown> {
     partialCrawl: row.verified_facts?.partialCrawl ?? false,
     // Competitor data (from LLM phase)
     topCompetitor: row.top_competitor || null,
-    topCompetitorMentions: row.top_competitor_mentions || 0,
+    topCompetitorMentions: row.top_competitor_mentions ?? null,
     visibilitySummary: row.visibility_summary || null,
     // Phase 2 not done yet
     status: row.status,
     providerStatus: row.provider_status || {},
+    // Crawl failed fields
+    crawl_failed: row.crawl_failed ?? false,
+    crawl_failed_reason: row.crawl_failed_reason ?? null,
+    needs_industry_input: row.needs_industry_input ?? false,
     // Generated questions (from DB or null)
     generated_questions: row.generated_questions || null,
     question_source: row.question_source || null,
@@ -207,8 +213,58 @@ export async function POST(req: NextRequest) {
     const t0 = Date.now();
 
     // Step 1: Collect facts (deterministic crawler)
-    const facts = await collectFacts(website_url);
-    const tFacts = Date.now();
+    let facts: any;
+    let tFacts: number;
+    let crawlFailed = false;
+    let crawlFailedReason: string | null = null;
+
+    try {
+      facts = await collectFacts(website_url);
+      tFacts = Date.now();
+    } catch (crawlErr: unknown) {
+      const isUnreachable = crawlErr instanceof Error && (crawlErr as any).errorType === "homepage_unreachable";
+      if (!isUnreachable) throw crawlErr; // re-throw non-crawl errors
+
+      crawlFailed = true;
+      crawlFailedReason = "blocked";
+
+      // Create report with nulls — no technical data
+      const brandFromDomain = dns.domain.replace(/\.[^.]+$/, "").replace(/^www\./, "");
+      const brandName = brandFromDomain.charAt(0).toUpperCase() + brandFromDomain.slice(1);
+
+      const { id: reportId, shortSlug } = await createReport({
+        domain: dns.domain,
+        url: website_url,
+        overallScore: null,
+        categoryScores: null,
+        citability: null,
+        findings: [],
+        topProblems: [],
+        verifiedFacts: {},
+        brandName,
+        vertical: vertical || "Other",
+        region,
+        subpages: [],
+        aiCrawlerFacts: null,
+        crawlFailed: true,
+        crawlFailedReason: "blocked",
+        needsIndustryInput: true,
+      });
+
+      return json({
+        reportId,
+        shortSlug,
+        overallScore: null,
+        categoryScores: null,
+        technicalScore: null,
+        crawl_failed: true,
+        crawl_failed_reason: "blocked",
+        needs_industry_input: true,
+        crawl_failed_notice: "Ihre Website konnte nicht ausgelesen werden, da sie automatisierten Zugriff blockiert. Die technische Analyse entfällt daher. Die Sichtbarkeit in KI-Antworten wurde vollständig gemessen.",
+        status: "pending",
+        selected_vertical: vertical || "Other",
+      }, { headers: { "x-ratelimit-limit": String(maxPerDay), "x-ratelimit-remaining": String(rateLimit.remaining) } });
+    }
 
     // Step 2: Score report (deterministic scoring)
     const scores = scoreReport(facts);
@@ -366,16 +422,6 @@ export async function POST(req: NextRequest) {
 
     return json(response, { headers: { "x-ratelimit-limit": "5", "x-ratelimit-remaining": String(rateLimit.remaining) } });
   } catch (err: unknown) {
-    // Check for homepage_unreachable — return 422 with German message
-    const isUnreachable = err instanceof Error && (err as any).errorType === "homepage_unreachable";
-    if (isUnreachable) {
-      const httpStatus = (err as any).httpStatus ?? 0;
-      const detail = httpStatus ? ` (HTTP ${httpStatus})` : "";
-      return json(
-        { error: "Die Website kann von unseren Servern nicht erreicht werden. Möglicherweise blockiert sie automatisierten Zugriff.", errorType: "homepage_unreachable" },
-        { status: 422 },
-      );
-    }
     const message = err instanceof Error ? err.message : "Unbekannter Fehler";
     // Expose Supabase URL issues (masked) without leaking secrets
     const supabaseUrl = (process.env.SUPABASE_URL || "").trim();
