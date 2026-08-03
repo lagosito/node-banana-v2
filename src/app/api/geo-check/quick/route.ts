@@ -146,10 +146,38 @@ export async function POST(req: NextRequest) {
         const cachedResponse = buildV2Phase1(cached);
         cachedResponse.selected_vertical = cached.vertical || "Other";
 
-        // Always run detection on cached reports
-        // Try to get title from stored verified_facts first, fallback to fetch
+        // Shared: get title + brandName for both fallback questions and detection
         const cachedTitle = cached.verified_facts?.meta?.title
           || await fetchPageTitle(dns.domain);
+        const cachedBrandName = cached.brand_name || await fetchBrandName(dns.domain);
+
+        // If cached report is missing generated_questions (old report), generate them now
+        if (!cachedResponse.generated_questions || (cachedResponse.generated_questions as string[]).length === 0) {
+          try {
+            const bodyText1500 = (cached.verified_facts as any)?.content?.bodyText?.slice(0, 1500) || "";
+            const genResult = await generateQuestions({
+              title: cachedTitle ?? "",
+              metaDescription: cached.verified_facts?.meta?.description || null,
+              bodyText1500,
+              brand: cachedBrandName,
+              region: region || "Deutschland",
+            });
+            if (genResult && genResult.questions.length > 0) {
+              cachedResponse.generated_questions = genResult.questions;
+              cachedResponse.question_source = "generated";
+              cachedResponse.brand_tokens = genResult.brandTokens;
+              await updateGeneratedQuestions(cached.id, {
+                generated_questions: genResult.questions,
+                question_source: "generated",
+                brand_tokens: genResult.brandTokens,
+              });
+            }
+          } catch (err) {
+            console.warn("[GEO-Check] Cache fallback question generation failed:", err);
+          }
+        }
+
+        // Always run detection on cached reports
         if (cachedTitle) {
           const keywordMatch = inferVerticalFromTitle(cachedTitle);
           if (keywordMatch !== "Other") {
@@ -158,10 +186,9 @@ export async function POST(req: NextRequest) {
           }
 
           // Always classify descriptor (even if keyword matched)
-          const brandName = cached.brand_name || await fetchBrandName(dns.domain);
           const cachedDesc = cached.verified_facts?.meta?.description || null;
           const { descriptor: rawDescriptor, confidence } = extractBusinessDescriptor(
-            cachedTitle, cachedDesc, dns.domain, brandName,
+            cachedTitle, cachedDesc, dns.domain, cachedBrandName,
           );
           if (rawDescriptor && confidence >= 0.5) {
             const { descriptor: classifiedDescriptor } = await classifyDescriptor(
