@@ -366,6 +366,16 @@ export async function POST(req: NextRequest) {
 
     return json(response, { headers: { "x-ratelimit-limit": "5", "x-ratelimit-remaining": String(rateLimit.remaining) } });
   } catch (err: unknown) {
+    // Check for homepage_unreachable — return 422 with German message
+    const isUnreachable = err instanceof Error && (err as any).errorType === "homepage_unreachable";
+    if (isUnreachable) {
+      const httpStatus = (err as any).httpStatus ?? 0;
+      const detail = httpStatus ? ` (HTTP ${httpStatus})` : "";
+      return json(
+        { error: "Die Website kann von unseren Servern nicht erreicht werden. Möglicherweise blockiert sie automatisierten Zugriff.", errorType: "homepage_unreachable" },
+        { status: 422 },
+      );
+    }
     const message = err instanceof Error ? err.message : "Unbekannter Fehler";
     // Expose Supabase URL issues (masked) without leaking secrets
     const supabaseUrl = (process.env.SUPABASE_URL || "").trim();

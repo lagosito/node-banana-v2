@@ -254,7 +254,7 @@ function getBaseDomain(url: string): string {
 
 // CHANGE 7: Shared fetch headers for connection reuse
 const FETCH_HEADERS = {
-  "User-Agent": "Mozilla/5.0 (compatible; GEO-Check-Bot/2.0; +https://elkiosk.ai)",
+  "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
   Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
   "Accept-Language": ACCEPT_LANGUAGE,
 } as const;
@@ -1009,7 +1009,11 @@ export async function collectFacts(url: string): Promise<VerifiedFacts> {
   const psiData = psiSettled.status === "fulfilled" ? psiSettled.value : null;
 
   if (!homeResult?.ok) {
-    throw new Error(`Homepage not reachable: ${homeUrl}`);
+    const status = homeResult?.status ?? 0;
+    const err = new Error(`Homepage not reachable: ${homeUrl}`) as Error & { errorType: string; httpStatus: number };
+    err.errorType = "homepage_unreachable";
+    err.httpStatus = status;
+    throw err;
   }
 
   // Record Phase 0 timings
