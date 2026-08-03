@@ -100,10 +100,18 @@ function questionContainsBrandToken(
   question: string,
   brandTokens: string[],
 ): boolean {
-  const qNorm = normalizeForGuard(question);
+  // Split into words and normalize each individually — prevents substring false positives
+  // e.g. "bit" should NOT match "bitte", "Bitterkeit"
+  const qWords = question
+    .toLowerCase()
+    .replace(/ß/g, "ss")
+    .replace(/ä/g, "a").replace(/ö/g, "o").replace(/ü/g, "u")
+    .replace(/ae/g, "a").replace(/oe/g, "o").replace(/ue/g, "u")
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length >= 2);
   return brandTokens.some((token) => {
     const tNorm = normalizeForGuard(token);
-    return tNorm.length >= 2 && qNorm.includes(tNorm);
+    return tNorm.length >= 4 && qWords.some((w) => w === tNorm);
   });
 }
 
@@ -194,9 +202,8 @@ export async function generateQuestions(
     const regionNorm = normalizeForGuard(region);
     const tokenList = [...normalizedTokens].filter((t) => {
       const tNorm = normalizeForGuard(t);
-      // Skip tokens ≤3 chars (too generic: "dm", "ag") — except if they're
-      // distinctive brand tokens from the LLM
-      if (tNorm.length <= 3 && !brandTokens.includes(t)) return false;
+      // Skip tokens <4 chars (too generic: "dm", "ag", "bit")
+      if (tNorm.length < 4) return false;
       // Skip tokens that match the region
       if (tNorm === regionNorm || regionNorm.includes(tNorm) || tNorm.includes(regionNorm)) return false;
       return true;
