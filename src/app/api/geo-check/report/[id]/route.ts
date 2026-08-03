@@ -141,7 +141,6 @@ export async function GET(
       // Crawl failed fields
       crawl_failed: report.crawl_failed ?? false,
       crawl_failed_reason: report.crawl_failed_reason ?? null,
-      needs_industry_input: report.needs_industry_input ?? false,
       crawl_failed_notice: report.crawl_failed
         ? "Ihre Website konnte nicht ausgelesen werden, da sie automatisierten Zugriff blockiert. Die technische Analyse entfällt daher. Die Sichtbarkeit in KI-Antworten wurde vollständig gemessen."
         : null,

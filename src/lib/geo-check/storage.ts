@@ -51,7 +51,7 @@ export interface ReportRow {
   vertical_resolved: string | null;
   // V1: Generated questions from page content
   generated_questions: string[] | null;
-  question_source: "generated" | "curated" | "descriptor" | "user_industry" | null;
+  question_source: "generated" | "curated" | "descriptor" | "user_industry" | "domain_inferred" | null;
   brand_tokens: string[] | null;
   // Crawl failed (sites with anti-bot protection)
   crawl_failed: boolean;
@@ -195,7 +195,7 @@ export async function setLlmResults(
     composite_breakdown?: any;
     prompts_used?: string[];
     vertical_resolved?: string;
-    question_source?: "generated" | "curated" | "descriptor" | "user_industry";
+    question_source?: "generated" | "curated" | "descriptor" | "user_industry" | "domain_inferred";
   },
 ): Promise<void> {
   const sb = supabase();
@@ -257,7 +257,7 @@ export async function updateGeneratedQuestions(
   id: string,
   data: {
     generated_questions: string[];
-    question_source: "generated" | "curated" | "descriptor" | "user_industry";
+    question_source: "generated" | "curated" | "descriptor" | "user_industry" | "domain_inferred";
     brand_tokens: string[];
   },
 ): Promise<void> {

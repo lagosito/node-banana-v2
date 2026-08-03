@@ -8,7 +8,7 @@ import { deUmlaut, reUmlaut } from "./index";
 export interface GeneratedQuestionsResult {
   questions: string[];
   brandTokens: string[];
-  source: "generated" | "curated" | "descriptor" | "user_industry";
+  source: "generated" | "curated" | "descriptor" | "user_industry" | "domain_inferred";
 }
 
 // ─── Generation prompt ───
@@ -331,5 +331,103 @@ export async function generateQuestionsFromIndustry(params: {
   } catch (err) {
     console.error("[GEO-Check] Industry question generation failed:", err);
     return { questions: [], brandTokens: [], source: "user_industry" };
+  }
+}
+
+// ─── Domain inference (for crawl_failed — no user input needed) ───
+
+const DOMAIN_INFERENCE_PROMPT = `Du analysierst eine Website, um deren Sichtbarkeit in KI-Antworten zu messen.
+
+WEBSITE-DATEN
+Domain: {domain}
+Marke: {brand}
+Markt: {region}
+
+AUFGABE
+1. Leite aus dem Domainnamen und dem Markennamen ab, in welcher Branche dieses Unternehmen tätig ist.
+2. Schreibe genau 6 Fragen, die ein potenzieller Kunde einer KI stellen würde,
+   um ein Unternehmen wie dieses zu finden.
+
+REGELN
+• Fehlerfreies Deutsch, Substantive gross geschrieben.
+• Die Marke "{brand}" darf in KEINER Frage vorkommen, auch nicht in Teilen.
+• Frage nach der Branche, nicht nach der Firma.
+• Passende Granularität: bei einer Marke nach Marken fragen, bei einem
+    Laden nach Anbietern, bei einem Hersteller nach Herstellern.
+• Der Markt "{region}" muss in jeder Frage vorkommen.
+• Variiere die Absicht: Empfehlung, Vergleich, Kauf, Information.
+
+Antworte NUR mit JSON:
+{"branche": "abgeleitete Branche", "fragen": [6 Strings], "markentoken": [Tokens der Marke, die in keiner Frage vorkommen dürfen, ohne Gattungsbegriffe]}`;
+
+/**
+ * Generate 6 questions by inferring the industry from domain + region.
+ * Used when crawl_failed — no page content, no user input.
+ */
+export async function generateQuestionsFromDomain(params: {
+  domain: string;
+  brand: string;
+  region: string;
+}): Promise<GeneratedQuestionsResult | null> {
+  const { domain, brand, region } = params;
+
+  const prompt = DOMAIN_INFERENCE_PROMPT
+    .replace(/{domain}/g, domain)
+    .replace(/{brand}/g, brand)
+    .replace(/{region}/g, region);
+
+  try {
+    const rawResponse = await callGeminiFlashJSON(prompt);
+
+    let parsed: { branche?: string; fragen?: string[]; markentoken?: string[] };
+    try {
+      const firstBrace = rawResponse.indexOf("{");
+      const lastBrace = rawResponse.lastIndexOf("}");
+      if (firstBrace >= 0 && lastBrace > firstBrace) {
+        parsed = JSON.parse(rawResponse.substring(firstBrace, lastBrace + 1));
+      } else {
+        throw new Error("No JSON object found");
+      }
+    } catch {
+      console.error("[GEO-Check] Domain inference: invalid JSON:", rawResponse.slice(0, 300));
+      return { questions: [], brandTokens: [], source: "domain_inferred" };
+    }
+
+    const questions = parsed.fragen || [];
+    const brandTokens = parsed.markentoken || [];
+
+    if (questions.length === 0) {
+      return { questions: [], brandTokens: [], source: "domain_inferred" };
+    }
+
+    // Normalize brand tokens (same logic as generateQuestions)
+    const normalizedTokens = new Set<string>();
+    for (const token of brandTokens) {
+      normalizedTokens.add(token);
+      normalizedTokens.add(deUmlaut(token));
+      normalizedTokens.add(reUmlaut(token));
+    }
+    const brandNorm = deUmlaut(brand.toLowerCase());
+    normalizedTokens.add(brandNorm);
+    normalizedTokens.add(reUmlaut(brandNorm));
+
+    const regionNorm = normalizeForGuard(region);
+    const tokenList = [...normalizedTokens].filter((t) => {
+      const tNorm = normalizeForGuard(t);
+      if (tNorm.length < 4) return false;
+      if (tNorm === regionNorm || regionNorm.includes(tNorm) || tNorm.includes(regionNorm)) return false;
+      return true;
+    });
+
+    const filtered = filterQuestions(questions, tokenList);
+
+    return {
+      questions: filtered.slice(0, 6),
+      brandTokens: tokenList,
+      source: "domain_inferred",
+    };
+  } catch (err) {
+    console.error("[GEO-Check] Domain inference question generation failed:", err);
+    return { questions: [], brandTokens: [], source: "domain_inferred" };
   }
 }

@@ -24,7 +24,7 @@ import {
   checkRateLimitDb,
   updateGeneratedQuestions,
 } from "@/lib/geo-check/storage";
-import { generateQuestions } from "@/lib/geo-check/questions";
+import { generateQuestions, generateQuestionsFromDomain } from "@/lib/geo-check/questions";
 
 // ─── CORS ───
 
@@ -232,6 +232,26 @@ export async function POST(req: NextRequest) {
       const brandFromDomain = dns.domain.replace(/\.[^.]+$/, "").replace(/^www\./, "");
       const brandName = brandFromDomain.charAt(0).toUpperCase() + brandFromDomain.slice(1);
 
+      // Generate questions from domain inference (no user input needed)
+      let generatedQuestions: string[] | null = null;
+      let questionSource: "domain_inferred" | null = null;
+      let brandTokensList: string[] | null = null;
+
+      try {
+        const genResult = await generateQuestionsFromDomain({
+          domain: dns.domain,
+          brand: brandName,
+          region: region || "Deutschland",
+        });
+        if (genResult && genResult.questions.length > 0) {
+          generatedQuestions = genResult.questions;
+          questionSource = "domain_inferred";
+          brandTokensList = genResult.brandTokens;
+        }
+      } catch (err) {
+        console.warn("[GEO-Check] Domain inference question generation failed:", err);
+      }
+
       const { id: reportId, shortSlug } = await createReport({
         domain: dns.domain,
         url: website_url,
@@ -248,8 +268,16 @@ export async function POST(req: NextRequest) {
         aiCrawlerFacts: null,
         crawlFailed: true,
         crawlFailedReason: "blocked",
-        needsIndustryInput: true,
       });
+
+      // Save questions to report
+      if (generatedQuestions) {
+        await updateGeneratedQuestions(reportId, {
+          generated_questions: generatedQuestions,
+          question_source: "domain_inferred",
+          brand_tokens: brandTokensList || [],
+        });
+      }
 
       return json({
         reportId,
@@ -259,8 +287,10 @@ export async function POST(req: NextRequest) {
         technicalScore: null,
         crawl_failed: true,
         crawl_failed_reason: "blocked",
-        needs_industry_input: true,
         crawl_failed_notice: "Ihre Website konnte nicht ausgelesen werden, da sie automatisierten Zugriff blockiert. Die technische Analyse entfällt daher. Die Sichtbarkeit in KI-Antworten wurde vollständig gemessen.",
+        generated_questions: generatedQuestions,
+        question_source: questionSource,
+        brand_tokens: brandTokensList,
         status: "pending",
         selected_vertical: vertical || "Other",
       }, { headers: { "x-ratelimit-limit": String(maxPerDay), "x-ratelimit-remaining": String(rateLimit.remaining) } });
