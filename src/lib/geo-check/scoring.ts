@@ -13,6 +13,8 @@ export interface ScoreCheck {
   weight: number;
   detail: string;
   evidence: string;
+  /** 0-1 for partial credit checks (timing ramps). Undefined = binary (0 or 1). */
+  fraction?: number;
 }
 
 export interface CategoryScore {
@@ -132,9 +134,9 @@ function scoreTechnik(facts: VerifiedFacts, cap: number): CategoryScore {
   const sizeOk = facts.perf.htmlSizeKb < 500;
   checks.push({ id: "technik-size", label: "HTML-Größe angemessen", passed: sizeOk, weight: 15, detail: `${facts.perf.htmlSizeKb}KB`, evidence: `${facts.perf.htmlSizeKb}KB` });
 
-  // TTFB
-  const ttfbOk = facts.perf.ttfbMs < 2000;
-  checks.push({ id: "technik-ttfb", label: "TTFB unter 2s", passed: ttfbOk, weight: 15, detail: `${facts.perf.ttfbMs}ms`, evidence: `${facts.perf.ttfbMs}ms` });
+  // TTFB (linear ramp: full ≤400ms, zero ≥3000ms)
+  const ttfbFraction = ramp(facts.perf.ttfbMs, 400, 3000);
+  checks.push({ id: "technik-ttfb", label: "TTFB", passed: ttfbFraction >= 0.5, weight: 15, detail: `TTFB: ${facts.perf.ttfbMs}ms`, evidence: `${facts.perf.ttfbMs}ms`, fraction: ttfbFraction });
 
   const raw = weightedAverage(checks);
   const score = applyCap(raw, cap);
@@ -299,13 +301,13 @@ function scorePerformance(facts: VerifiedFacts, cap: number): CategoryScore {
     const clsOk = (facts.perf.psi.cls ?? 9999) < 0.1;
     checks.push({ id: "perf-cls", label: "CLS unter 0.1", passed: clsOk, weight: 30, detail: `${facts.perf.psi.cls}`, evidence: `${facts.perf.psi.cls}` });
   } else {
-    // Fallback: TTFB
-    const ttfbOk = facts.perf.ttfbMs < 1000;
-    checks.push({ id: "perf-ttfb", label: "TTFB unter 1s", passed: ttfbOk, weight: 40, detail: `${facts.perf.ttfbMs}ms`, evidence: `${facts.perf.ttfbMs}ms` });
+    // Fallback: TTFB (linear ramp: full ≤400ms, zero ≥2000ms)
+    const ttfbFraction = ramp(facts.perf.ttfbMs, 400, 2000);
+    checks.push({ id: "perf-ttfb", label: "TTFB", passed: ttfbFraction >= 0.5, weight: 40, detail: `TTFB: ${facts.perf.ttfbMs}ms`, evidence: `${facts.perf.ttfbMs}ms`, fraction: ttfbFraction });
 
-    // Load time
-    const loadOk = facts.perf.loadTimeMs < 3000;
-    checks.push({ id: "perf-load", label: "Ladezeit unter 3s", passed: loadOk, weight: 30, detail: `${facts.perf.loadTimeMs}ms`, evidence: `${facts.perf.loadTimeMs}ms` });
+    // Load time (linear ramp: full ≤1500ms, zero ≥5000ms)
+    const loadFraction = ramp(facts.perf.loadTimeMs, 1500, 5000);
+    checks.push({ id: "perf-load", label: "Ladezeit", passed: loadFraction >= 0.5, weight: 30, detail: `Ladezeit: ${facts.perf.loadTimeMs}ms`, evidence: `${facts.perf.loadTimeMs}ms`, fraction: loadFraction });
 
     // HTML size
     const sizeOk = facts.perf.htmlSizeKb < 200;
@@ -386,11 +388,21 @@ function scoreCitability(facts: VerifiedFacts): CitabilityScore {
 
 // ─── Helpers ───
 
+/** Linear ramp: full credit <= minMs, zero credit >= maxMs, linear between. */
+function ramp(ms: number, minMs: number, maxMs: number): number {
+  if (ms <= minMs) return 1;
+  if (ms >= maxMs) return 0;
+  return 1 - (ms - minMs) / (maxMs - minMs);
+}
+
 function weightedAverage(checks: ScoreCheck[]): number {
   const totalWeight = checks.reduce((s, c) => s + c.weight, 0);
   if (totalWeight === 0) return 0;
-  const earned = checks.reduce((s, c) => s + (c.passed ? c.weight : 0), 0);
-  return Math.round((earned / totalWeight) * 100);
+  const earned = checks.reduce((s, c) => {
+    const fraction = c.fraction ?? (c.passed ? 1 : 0);
+    return s + fraction * c.weight;
+  }, 0);
+  return (earned / totalWeight) * 100;
 }
 
 function applyCap(score: number, cap: number): number {
