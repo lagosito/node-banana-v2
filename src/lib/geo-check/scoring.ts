@@ -395,6 +395,36 @@ function ramp(ms: number, minMs: number, maxMs: number): number {
   return 1 - (ms - minMs) / (maxMs - minMs);
 }
 
+/** Format number in German style: 4.100 not 4,100 */
+function deNumber(n: number): string {
+  return n.toLocaleString("de-DE");
+}
+
+/**
+ * Generate a content-basis sentence from measured values.
+ * Tiers are keyed to contentCap breakpoints so the sentence never
+ * contradicts the score. Returns null when crawl_failed.
+ */
+export function buildContentBasis(facts: VerifiedFacts, crawlFailed: boolean): string | null {
+  if (crawlFailed) return null;
+
+  const pages = facts.scannedUrls.length;
+  const words = facts.content.wordCount;
+  const blocks = facts.content.h2Count + facts.content.h3Count + facts.content.imagesTotal;
+  const cap = contentCap(facts);
+
+  if (cap < 50) {
+    // thin
+    return `Wir haben ${deNumber(pages)} ${pages === 1 ? "Seite" : "Seiten"} mit insgesamt ${deNumber(words)} Wörtern analysiert. Für KI-Systeme ist das eine schmale Datenbasis. Sie finden zu wenig Text, um Ihr Unternehmen bei konkreten Fragen als Antwort auszuwählen.`;
+  }
+  if (cap < 80) {
+    // medium
+    return `Wir haben ${deNumber(pages)} ${pages === 1 ? "Seite" : "Seiten"} mit insgesamt ${deNumber(words)} Wörtern und ${deNumber(blocks)} Inhaltsblöcken analysiert. Das reicht, um Ihr Unternehmen zu erkennen, aber nicht, um es bei spezifischen Fragen zu empfehlen.`;
+  }
+  // solid
+  return `Wir haben ${deNumber(pages)} ${pages === 1 ? "Seite" : "Seiten"} mit insgesamt ${deNumber(words)} Wörtern analysiert. Ihre Inhaltsbasis ist solide. Der Engpass liegt woanders.`;
+}
+
 function weightedAverage(checks: ScoreCheck[]): number {
   const totalWeight = checks.reduce((s, c) => s + c.weight, 0);
   if (totalWeight === 0) return 0;

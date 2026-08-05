@@ -16,7 +16,7 @@ import {
 } from "@/lib/geo-check";
 import { normalizeUrl } from "@/lib/normalize-url";
 import { collectFacts } from "@/lib/geo-check/crawler";
-import { scoreReport } from "@/lib/geo-check/scoring";
+import { scoreReport, buildContentBasis } from "@/lib/geo-check/scoring";
 import type { ScoreCheck, CategoryScore } from "@/lib/geo-check/scoring";
 import {
   createReport,
@@ -95,6 +95,8 @@ function buildV2Phase1(row: any): Record<string, unknown> {
     generated_questions: row.generated_questions || null,
     question_source: row.question_source || null,
     brand_tokens: row.brand_tokens || null,
+    // Content basis sentence (from cached verified_facts)
+    contentBasis: buildContentBasis(row.verified_facts ?? {}, row.crawl_failed ?? false),
   };
 }
 
@@ -480,6 +482,9 @@ export async function POST(req: NextRequest) {
     response.generated_questions = generatedQuestions;
     response.question_source = questionSource;
     response.brand_tokens = brandTokensList;
+
+    // Content basis sentence (from measured values, omitted when crawl_failed)
+    response.contentBasis = buildContentBasis(facts, crawlFailed);
 
     return json(response, { headers: { "x-ratelimit-limit": "5", "x-ratelimit-remaining": String(rateLimit.remaining) } });
   } catch (err: unknown) {
