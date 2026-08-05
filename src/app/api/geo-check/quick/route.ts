@@ -131,19 +131,7 @@ export async function POST(req: NextRequest) {
       return json({ error: `Invalid vertical. Valid: ${VALID_VERTICALS.join(", ")}` }, { status: 400 });
     }
 
-    let effectiveUrl = normalizedUrl;
-    let dns = await validateDomain(effectiveUrl);
-
-    // www fallback: if apex fails DNS, try www variant before rejecting
-    if (!dns.valid && !new URL(effectiveUrl).hostname.startsWith("www.")) {
-      const wwwUrl = effectiveUrl.replace(/^(https?:\/\/)/, "$1www.");
-      const wwwDns = await validateDomain(wwwUrl);
-      if (wwwDns.valid) {
-        effectiveUrl = wwwUrl;
-        dns = wwwDns;
-      }
-    }
-
+    let dns = await validateDomain(normalizedUrl);
     if (!dns.valid) {
       return json({ error: dns.error }, { status: 400 });
     }
@@ -238,7 +226,7 @@ export async function POST(req: NextRequest) {
     let tFacts = 0;
     let crawlFailed = false;
     let crawlFailedReason: string | null = null;
-    // effectiveUrl declared earlier (before validateDomain) for www fallback
+    let effectiveUrl = normalizedUrl;
 
     try {
       facts = await collectFacts(effectiveUrl);
