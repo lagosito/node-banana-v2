@@ -1,0 +1,32 @@
+--- a/src/lib/geo-check/scoring.ts
++++ b/src/lib/geo-check/scoring.ts
+@@ -434,16 +434,26 @@
+   const blocks = facts.content.h2Count + facts.content.h3Count + facts.content.imagesTotal;
+   const cap = contentCap(facts);
+ 
++  // wordCount und blocks stammen AUSSCHLIESSLICH von der Startseite: der
++  // Merge-Loop im Crawler summiert nur questionHeadings, bulletPoints und
++  // hasFaqSection über Unterseiten, nicht Wörter, Überschriften oder Bilder.
++  // "N Seiten mit insgesamt M Wörtern" war deshalb sachlich falsch.
++  const others = Math.max(0, pages - 1);
++  const alsoChecked =
++    others > 0
++      ? ` Zusätzlich haben wir ${deNumber(others)} weitere ${others === 1 ? "Seite" : "Seiten"} geprüft.`
++      : "";
++
+   if (cap < 50) {
+     // thin
+-    return `Wir haben ${deNumber(pages)} ${pages === 1 ? "Seite" : "Seiten"} mit insgesamt ${deNumber(words)} Wörtern analysiert. Für KI-Systeme ist das eine schmale Datenbasis. Sie finden zu wenig Text, um Ihr Unternehmen bei konkreten Fragen als Antwort auszuwählen.`;
++    return `Ihre Startseite umfasst ${deNumber(words)} Wörter.${alsoChecked} Für KI-Systeme ist das eine schmale Datenbasis. Sie finden zu wenig Text, um Ihr Unternehmen bei konkreten Fragen als Antwort auszuwählen.`;
+   }
+   if (cap < 80) {
+     // medium
+-    return `Wir haben ${deNumber(pages)} ${pages === 1 ? "Seite" : "Seiten"} mit insgesamt ${deNumber(words)} Wörtern und ${deNumber(blocks)} Inhaltsblöcken analysiert. Das reicht, um Ihr Unternehmen zu erkennen, aber nicht, um es bei spezifischen Fragen zu empfehlen.`;
++    return `Ihre Startseite umfasst ${deNumber(words)} Wörter und ${deNumber(blocks)} Inhaltsblöcke.${alsoChecked} Das reicht, um Ihr Unternehmen zu erkennen, aber nicht, um es bei spezifischen Fragen zu empfehlen.`;
+   }
+   // solid
+-  return `Wir haben ${deNumber(pages)} ${pages === 1 ? "Seite" : "Seiten"} mit insgesamt ${deNumber(words)} Wörtern analysiert. Ihre Inhaltsbasis ist solide. Der Engpass liegt woanders.`;
++  return `Ihre Startseite umfasst ${deNumber(words)} Wörter.${alsoChecked} Ihre Inhaltsbasis ist solide. Der Engpass liegt woanders.`;
+ }
+ 
+ /**
