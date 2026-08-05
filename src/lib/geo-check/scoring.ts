@@ -69,14 +69,13 @@ export const SCORE_WEIGHTS = {
   },
 };
 
-// ─── Substance Floor ───
+// ─── Content Cap ───
 
 /**
- * Confidence factor based on content volume.
- * Trivial sites (< 100 words, < 3 pages) get penalized.
- * This prevents example.com from scoring 100 in performance/designUx.
+ * Caps every category score at a value derived from content volume,
+ * so a thin site cannot score high. This is a ceiling (Math.min), not a floor.
  */
-function substanceFloor(facts: VerifiedFacts): number {
+function contentCap(facts: VerifiedFacts): number {
   const pages = facts.scannedUrls.length;
   const words = facts.content.wordCount;
   const images = facts.content.imagesTotal;
@@ -110,7 +109,7 @@ function substanceFloor(facts: VerifiedFacts): number {
 
 // ─── Category Scorers ───
 
-function scoreTechnik(facts: VerifiedFacts, floor: number): CategoryScore {
+function scoreTechnik(facts: VerifiedFacts, cap: number): CategoryScore {
   const checks: ScoreCheck[] = [];
 
   // HTTPS (always true in our crawler, but check anyway)
@@ -138,11 +137,11 @@ function scoreTechnik(facts: VerifiedFacts, floor: number): CategoryScore {
   checks.push({ id: "technik-ttfb", label: "TTFB unter 2s", passed: ttfbOk, weight: 15, detail: `${facts.perf.ttfbMs}ms`, evidence: `${facts.perf.ttfbMs}ms` });
 
   const raw = weightedAverage(checks);
-  const score = applyFloor(raw, floor);
+  const score = applyCap(raw, cap);
   return { score, checks };
 }
 
-function scoreAiReadiness(facts: VerifiedFacts, floor: number): CategoryScore {
+function scoreAiReadiness(facts: VerifiedFacts, cap: number): CategoryScore {
   const checks: ScoreCheck[] = [];
 
   // Crawlers allowed
@@ -167,11 +166,11 @@ function scoreAiReadiness(facts: VerifiedFacts, floor: number): CategoryScore {
   checks.push({ id: "ai-faq", label: "FAQ-Sektion", passed: faq, weight: 20, detail: faq ? "FAQ erkannt" : "Keine FAQ-Sektion", evidence: faq ? "JSON-LD FAQPage oder Sektion gefunden" : "none" });
 
   const raw = weightedAverage(checks);
-  const score = applyFloor(raw, floor);
+  const score = applyCap(raw, cap);
   return { score, checks };
 }
 
-function scoreContent(facts: VerifiedFacts, floor: number): CategoryScore {
+function scoreContent(facts: VerifiedFacts, cap: number): CategoryScore {
   const checks: ScoreCheck[] = [];
 
   // Word count
@@ -204,11 +203,11 @@ function scoreContent(facts: VerifiedFacts, floor: number): CategoryScore {
   checks.push({ id: "content-alt", label: "Bilder mit Alt-Text", passed: altOk, weight: 15, detail: `${facts.content.imagesMissingAlt} von ${imgTotal} ohne Alt`, evidence: imgTotal > 0 ? `${Math.round(imgAlt * 100)}% haben Alt-Text` : "Keine Bilder" });
 
   const raw = weightedAverage(checks);
-  const score = applyFloor(raw, floor);
+  const score = applyCap(raw, cap);
   return { score, checks };
 }
 
-function scoreTrust(facts: VerifiedFacts, floor: number): CategoryScore {
+function scoreTrust(facts: VerifiedFacts, cap: number): CategoryScore {
   const checks: ScoreCheck[] = [];
 
   // E-E-A-T trust score from crawler
@@ -231,11 +230,11 @@ function scoreTrust(facts: VerifiedFacts, floor: number): CategoryScore {
   checks.push({ id: "trust-discovery", label: "Rechtliche Seiten per Link gefunden", passed: discoveryOk, weight: 30, detail: `Discovery: ${facts.eeat.discovery}`, evidence: facts.eeat.discovery === "link" ? "Alle Seiten im Navigationssystem gefunden" : facts.eeat.discovery === "guess" ? "Teilweise geraten (geringere Qualität)" : "Nichts gefunden" });
 
   const raw = weightedAverage(checks);
-  const score = applyFloor(raw, floor);
+  const score = applyCap(raw, cap);
   return { score, checks };
 }
 
-function scoreSeo(facts: VerifiedFacts, floor: number): CategoryScore {
+function scoreSeo(facts: VerifiedFacts, cap: number): CategoryScore {
   const checks: ScoreCheck[] = [];
 
   const hasTitle = !!facts.meta.title;
@@ -257,11 +256,11 @@ function scoreSeo(facts: VerifiedFacts, floor: number): CategoryScore {
   checks.push({ id: "seo-viewport", label: "Viewport-Meta", passed: hasViewport, weight: 15, detail: hasViewport ? "Viewport gesetzt" : "Kein Viewport", evidence: hasViewport ? "yes" : "no" });
 
   const raw = weightedAverage(checks);
-  const score = applyFloor(raw, floor);
+  const score = applyCap(raw, cap);
   return { score, checks };
 }
 
-function scoreDesignUx(facts: VerifiedFacts, floor: number): CategoryScore {
+function scoreDesignUx(facts: VerifiedFacts, cap: number): CategoryScore {
   const checks: ScoreCheck[] = [];
 
   const hasViewport = facts.meta.hasViewport;
@@ -282,11 +281,11 @@ function scoreDesignUx(facts: VerifiedFacts, floor: number): CategoryScore {
   checks.push({ id: "ux-content", label: "Genügend Inhalte", passed: hasContent, weight: 20, detail: `${facts.content.wordCount} Wörter`, evidence: `${facts.content.wordCount} Wörter` });
 
   const raw = weightedAverage(checks);
-  const score = applyFloor(raw, floor);
+  const score = applyCap(raw, cap);
   return { score, checks };
 }
 
-function scorePerformance(facts: VerifiedFacts, floor: number): CategoryScore {
+function scorePerformance(facts: VerifiedFacts, cap: number): CategoryScore {
   const checks: ScoreCheck[] = [];
 
   // If PSI available, use it
@@ -314,11 +313,11 @@ function scorePerformance(facts: VerifiedFacts, floor: number): CategoryScore {
   }
 
   const raw = weightedAverage(checks);
-  const score = applyFloor(raw, floor);
+  const score = applyCap(raw, cap);
   return { score, checks };
 }
 
-function scoreAiVisibility(_facts: VerifiedFacts, floor: number): CategoryScore {
+function scoreAiVisibility(_facts: VerifiedFacts, cap: number): CategoryScore {
   // Placeholder: aiVisibility comes from the runner (mention rate from Prompt Library)
   // Score is set externally after LLM queries complete
   const checks: ScoreCheck[] = [
@@ -394,8 +393,8 @@ function weightedAverage(checks: ScoreCheck[]): number {
   return Math.round((earned / totalWeight) * 100);
 }
 
-function applyFloor(score: number, floor: number): number {
-  return Math.min(score, floor);
+function applyCap(score: number, cap: number): number {
+  return Math.min(score, cap);
 }
 
 function verdictFromScore(score: number): { label: string; headline: string } {
@@ -409,17 +408,17 @@ function verdictFromScore(score: number): { label: string; headline: string } {
 // ─── Main Scoring Function ───
 
 export function scoreReport(facts: VerifiedFacts): ScoringResult {
-  const floor = substanceFloor(facts);
+  const cap = contentCap(facts);
 
   const categoryScores = {
-    technik: scoreTechnik(facts, floor),
-    aiReadiness: scoreAiReadiness(facts, floor),
-    content: scoreContent(facts, floor),
-    trust: scoreTrust(facts, floor),
-    seo: scoreSeo(facts, floor),
-    designUx: scoreDesignUx(facts, floor),
-    performance: scorePerformance(facts, floor),
-    aiVisibility: scoreAiVisibility(facts, floor),
+    technik: scoreTechnik(facts, cap),
+    aiReadiness: scoreAiReadiness(facts, cap),
+    content: scoreContent(facts, cap),
+    trust: scoreTrust(facts, cap),
+    seo: scoreSeo(facts, cap),
+    designUx: scoreDesignUx(facts, cap),
+    performance: scorePerformance(facts, cap),
+    aiVisibility: scoreAiVisibility(facts, cap),
   };
 
   const citability = scoreCitability(facts);
