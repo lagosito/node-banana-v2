@@ -3,6 +3,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getReport, createLead } from "@/lib/geo-check/storage";
+import { buildContentBasis, buildZeroExplanation } from "@/lib/geo-check/scoring";
 
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -144,6 +145,17 @@ export async function GET(
       crawl_failed_notice: report.crawl_failed
         ? "Ihre Website konnte nicht ausgelesen werden, da sie automatisierten Zugriff blockiert. Die technische Analyse entfällt daher. Die Sichtbarkeit in KI-Antworten wurde vollständig gemessen."
         : null,
+      // Content basis sentence (from measured values)
+      contentBasis: buildContentBasis(report.verified_facts ?? {}, report.crawl_failed ?? false),
+      // "Warum 0?" explanation (shown when mentionRate is 0)
+      zeroExplanation: buildZeroExplanation({
+        mentionRate: report.mention_rate ?? 0,
+        technicalScore: report.overall_score ?? null,
+        crawlFailed: report.crawl_failed ?? false,
+        citedSourcesCount: citedDomains.length,
+        topCompetitorName: report.top_competitor || null,
+        topCompetitorMentions: report.top_competitor_mentions ?? 0,
+      }),
     };
 
     return json(response);
@@ -192,6 +204,18 @@ export async function POST(req: NextRequest) {
     // Re-fetch to get updated report with unlocked=true
     const unlocked = await getReport(reportId);
 
+    // Recompute cited domains for zeroExplanation
+    const unlockedCitedDomains: string[] = [];
+    if (unlocked!.analysis_details) {
+      const domainSet = new Set<string>();
+      for (const detail of Object.values(unlocked!.analysis_details) as any[]) {
+        for (const d of detail.cited_domains || []) {
+          if (d && typeof d === "string") domainSet.add(d);
+        }
+      }
+      unlockedCitedDomains.push(...domainSet);
+    }
+
     return json({
       reportId: unlocked!.id,
       shortSlug: unlocked!.short_slug,
@@ -220,6 +244,17 @@ export async function POST(req: NextRequest) {
       verticalResolved: unlocked!.vertical_resolved || null,
       gated: false,
       emailCollected: true,
+      // Content basis sentence (from measured values)
+      contentBasis: buildContentBasis(unlocked!.verified_facts ?? {}, unlocked!.crawl_failed ?? false),
+      // "Warum 0?" explanation (shown when mentionRate is 0)
+      zeroExplanation: buildZeroExplanation({
+        mentionRate: unlocked!.mention_rate ?? 0,
+        technicalScore: unlocked!.overall_score ?? null,
+        crawlFailed: unlocked!.crawl_failed ?? false,
+        citedSourcesCount: unlockedCitedDomains.length,
+        topCompetitorName: unlocked!.top_competitor || null,
+        topCompetitorMentions: unlocked!.top_competitor_mentions ?? 0,
+      }),
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unbekannter Fehler";

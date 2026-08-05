@@ -16,7 +16,7 @@ import {
 } from "@/lib/geo-check";
 import { normalizeUrl } from "@/lib/normalize-url";
 import { collectFacts } from "@/lib/geo-check/crawler";
-import { scoreReport, buildContentBasis } from "@/lib/geo-check/scoring";
+import { scoreReport, buildContentBasis, buildZeroExplanation } from "@/lib/geo-check/scoring";
 import type { ScoreCheck, CategoryScore } from "@/lib/geo-check/scoring";
 import {
   createReport,
