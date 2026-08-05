@@ -54,36 +54,28 @@ export {
 
 // ─── DNS Validation ───
 
-const VALIDATE_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
-
-export async function validateDomain(url: string): Promise<{ valid: boolean; domain: string; resolvedUrl?: string; error?: string }> {
+export async function validateDomain(url: string): Promise<{ valid: boolean; domain: string; error?: string }> {
   let domain: string;
-  let fetchUrl: string;
   try {
     const u = new URL(url.startsWith("http") ? url : `https://${url}`);
-    domain = u.hostname.replace(/^www\\./, "");
-    // Fetch the URL as-given (honour www prefix) for reachability check
-    fetchUrl = u.origin;
+    domain = u.hostname.replace(/^www\./, "");
   } catch {
     return { valid: false, domain: "", error: "Invalid URL" };
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
   try {
-    const res = await fetch(fetchUrl, {
-      method: "GET",
+    // Check if domain resolves (DNS lookup via fetch with short timeout)
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(`https://${domain}`, {
+      method: "HEAD",
       signal: controller.signal,
       redirect: "follow",
-      headers: { "User-Agent": VALIDATE_UA },
     });
-    // Use the final URL after redirects as the resolved endpoint
-    const resolved = res.url || fetchUrl;
-    return { valid: true, domain, resolvedUrl: resolved };
+    clearTimeout(timeout);
+    return { valid: true, domain };
   } catch {
     return { valid: false, domain, error: "Domain unreachable" };
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
