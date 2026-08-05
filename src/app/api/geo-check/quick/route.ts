@@ -134,7 +134,7 @@ export async function POST(req: NextRequest) {
     let effectiveUrl = normalizedUrl;
     let dns = await validateDomain(effectiveUrl);
 
-    // www fallback: if apex fails DNS, try www variant before rejecting
+    // www fallback: if bare hostname fails, try www variant before rejecting
     if (!dns.valid && !new URL(effectiveUrl).hostname.startsWith("www.")) {
       const wwwUrl = effectiveUrl.replace(/^(https?:\/\/)/, "$1www.");
       const wwwDns = await validateDomain(wwwUrl);
@@ -146,6 +146,11 @@ export async function POST(req: NextRequest) {
 
     if (!dns.valid) {
       return json({ error: dns.error }, { status: 400 });
+    }
+
+    // Use resolvedUrl from validateDomain so crawl, report and Supabase agree
+    if (dns.resolvedUrl) {
+      effectiveUrl = dns.resolvedUrl;
     }
 
     // Rate limit — read env vars per request (no deploy needed to change)
@@ -238,7 +243,6 @@ export async function POST(req: NextRequest) {
     let tFacts = 0;
     let crawlFailed = false;
     let crawlFailedReason: string | null = null;
-    // effectiveUrl declared earlier (before validateDomain) for www fallback
 
     try {
       facts = await collectFacts(effectiveUrl);
@@ -247,24 +251,8 @@ export async function POST(req: NextRequest) {
       const isUnreachable = crawlErr instanceof Error && (crawlErr as any).errorType === "homepage_unreachable";
       if (!isUnreachable) throw crawlErr; // re-throw non-crawl errors
 
-      // www fallback: retry once on DNS/connection failure when hostname has no www prefix
-      const httpStatus = (crawlErr as any).httpStatus ?? 0;
-      const hostname = new URL(effectiveUrl).hostname;
-      if (httpStatus === 0 && !hostname.startsWith("www.")) {
-        const wwwUrl = effectiveUrl.replace(/^(https?:\/\/)/, "$1www.");
-        console.log(`[GEO-Check] www fallback: retrying with ${wwwUrl}`);
-        try {
-          facts = await collectFacts(wwwUrl);
-          tFacts = Date.now();
-          effectiveUrl = wwwUrl;
-          // Re-validate domain for the www version
-          const wwwDns = await validateDomain(wwwUrl);
-          if (wwwDns.valid) dns = wwwDns;
-        } catch {
-          // Retry also failed — fall through to crawl_failed
-          console.log(`[GEO-Check] www fallback also failed for ${wwwUrl}`);
-        }
-      }
+      // www fallback is now handled by validateDomain (fetches actual URL)
+      // No retry needed here — if validateDomain succeeded, collectFacts should too
 
       if (!facts) {
         crawlFailed = true;
