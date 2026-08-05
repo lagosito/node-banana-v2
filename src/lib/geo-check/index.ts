@@ -61,7 +61,7 @@ export async function validateDomain(url: string): Promise<{ valid: boolean; dom
   let fetchUrl: string;
   try {
     const u = new URL(url.startsWith("http") ? url : `https://${url}`);
-    domain = u.hostname.replace(/^www\./, "");
+    domain = u.hostname.replace(/^www\\./, "");
     // Fetch the URL as-given (honour www prefix) for reachability check
     fetchUrl = u.origin;
   } catch {
