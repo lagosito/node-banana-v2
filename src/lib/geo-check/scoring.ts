@@ -447,14 +447,20 @@ export function buildZeroExplanation(opts: {
   if (ts >= 70) {
     // Variant A: technical score is good, visibility is the gap
     let text = `Ihr technischer Score liegt bei ${ts}/100 — das ist solide. KI-Systeme wie ChatGPT und Perplexity ziehen ihre Empfehlungen jedoch nicht nur aus Ihrer Website, sondern vor allem aus Quellen, die sie bereits kennen.`;
-    text += ` Wir haben ${citedSourcesCount} zitierte Quellen analysiert. ${topCompetitorName ? `In ${topCompetitorMentions} davon wird ${topCompetitorName} genannt` : `Ihr Unternehmen wird in keiner davon genannt`}.`;
+    text += ` Wir haben ${deNumber(citedSourcesCount)} zitierte Quellen analysiert. Ihr Unternehmen wird in keiner davon genannt.`;
+    if (topCompetitorName) {
+      text += ` ${topCompetitorName} taucht in ${deNumber(topCompetitorMentions)} KI-Antworten auf.`;
+    }
     text += ` Die zwei Hebel für KI-Sichtbarkeit sind Ihre eigene Website — die bereits gut aufgestellt ist — und die Präsenz in den Quellen, auf die KI-Systeme zurückgreifen.`;
     return text;
   }
 
   // Variant B: both sides need work
   let text = `Ihr technischer Score liegt bei ${ts}/100. KI-Systeme empfehlen Unternehmen, die sie aus ihren Quellen kennen.`;
-  text += ` Wir haben ${citedSourcesCount} zitierte Quellen analysiert. ${topCompetitorName ? `${topCompetitorName} wird in ${topCompetitorMentions} davon genannt` : `Ihr Unternehmen wird in keiner davon genannt`}.`;
+  text += ` Wir haben ${deNumber(citedSourcesCount)} zitierte Quellen analysiert. Ihr Unternehmen wird in keiner davon genannt.`;
+  if (topCompetitorName) {
+    text += ` ${topCompetitorName} wird in ${deNumber(topCompetitorMentions)} KI-Antworten genannt.`;
+  }
   text += ` Sowohl die Website als auch die Präsenz in den relevanten Quellen benötigen Aufmerksamkeit.`;
   return text;
 }

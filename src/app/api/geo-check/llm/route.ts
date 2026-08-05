@@ -540,6 +540,14 @@ export async function POST(req: NextRequest) {
     // Renderer expects: {category, finding, recommendation, priority}
     const findings: Array<{category: string; finding: string; recommendation: string; priority: number}> = [];
 
+    // Helper: check if a specific aiReadiness check failed
+    const aiCheckFailed = (checkId: string): boolean => {
+      const checks = report.category_scores?.aiReadiness?.checks;
+      if (!checks) return false;
+      const check = checks.find((c: any) => c.id === checkId);
+      return check ? !check.passed : false;
+    };
+
     // Crawl blocked finding — top priority, actionable
     if (report.crawl_failed && report.crawl_failed_reason === "blocked") {
       findings.push({
@@ -554,7 +562,11 @@ export async function POST(req: NextRequest) {
       findings.push({
         category: "Sichtbarkeit",
         finding: `Ihre Marke wird in weniger als 30% der KI-Antworten erwähnt (${Math.round(mentionRate * 100)}%).`,
-        recommendation: "Erstellen Sie ein llms.txt auf Ihrer Website und implementieren Sie strukturierte Daten (Schema.org), damit KI-Systeme Ihre Marke leichter finden.",
+        recommendation: [
+          aiCheckFailed("ai-llmstxt") ? "Erstellen Sie ein llms.txt auf Ihrer Website, damit KI-Systeme Ihre Inhalte strukturiert finden." : null,
+          aiCheckFailed("ai-schema") ? "Implementieren Sie strukturierte Daten (Schema.org), damit KI-Systeme Ihre Marke in Antworten verlinken können." : null,
+          !aiCheckFailed("ai-llmstxt") && !aiCheckFailed("ai-schema") ? "Optimieren Sie Ihre Inhalte für KI-Empfehlungen in den Quellen, die Ihre Konkurrenten zitiert bekommen." : null,
+        ].filter(Boolean).join(" "),
         priority: 1,
       });
     }
