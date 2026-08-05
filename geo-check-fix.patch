@@ -1,0 +1,492 @@
+--- a/src/lib/geo-check/crawler.ts
++++ b/src/lib/geo-check/crawler.ts
+@@ -418,11 +418,87 @@
+   };
+ }
+ 
++const SCHEMA_MAX_DEPTH = 12;
++
++/** Normalisiert @type zu einem String-Array. Nie join(","). */
++function schemaTypes(item: Record<string, unknown>): string[] {
++  const t = item["@type"];
++  if (typeof t === "string") return t ? [t] : [];
++  if (Array.isArray(t)) return t.filter((x): x is string => typeof x === "string" && !!x);
++  return [];
++}
++
++/**
++ * Sammelt die WURZEL-Entitäten eines Blocks: die @graph-Knoten, die Elemente
++ * eines Top-Level-Arrays, oder das Wurzelobjekt selbst.
++ * Deren Typen sind die, die im Report angezeigt werden — nicht PostalAddress,
++ * ImageObject oder SearchAction, die nur Beiwerk einer Entität sind.
++ */
++function collectRootEntities(
++  node: unknown,
++  out: Record<string, unknown>[],
++  depth = 0,
++): void {
++  if (depth > SCHEMA_MAX_DEPTH || node === null || typeof node !== "object") return;
++
++  if (Array.isArray(node)) {
++    for (const n of node) collectRootEntities(n, out, depth + 1);
++    return;
++  }
++
++  const rec = node as Record<string, unknown>;
++
++  // FIX 1: @graph auflösen — die Knoten darin sind die Wurzelentitäten
++  if (rec["@graph"] !== undefined) {
++    collectRootEntities(rec["@graph"], out, depth + 1);
++    if (schemaTypes(rec).length > 0) out.push(rec);
++    return;
++  }
++
++  if (schemaTypes(rec).length > 0) out.push(rec);
++}
++
++/**
++ * Läuft eine Entität rekursiv ab und sammelt ALLE Typen inklusive
++ * verschachtelter Objekte. Nur für die has*-Flags, nicht für die Anzeige.
++ */
++function collectNestedTypes(node: unknown, acc: Set<string>, depth = 0): void {
++  if (depth > SCHEMA_MAX_DEPTH || node === null || typeof node !== "object") return;
++
++  if (Array.isArray(node)) {
++    for (const n of node) collectNestedTypes(n, acc, depth + 1);
++    return;
++  }
++
++  const rec = node as Record<string, unknown>;
++  for (const t of schemaTypes(rec)) acc.add(t);
++
++  // @graph muss explizit betreten werden — sonst greift der @-Filter unten
++  // und der gesamte Rank-Math-Graph bleibt unsichtbar.
++  if (rec["@graph"] !== undefined) collectNestedTypes(rec["@graph"], acc, depth + 1);
++
++  for (const key of Object.keys(rec)) {
++    if (key.startsWith("@")) continue;
++    const v = rec[key];
++    if (v !== null && typeof v === "object") collectNestedTypes(v, acc, depth + 1);
++  }
++}
++
++/** Erkennt, ob ein geparster Block überhaupt schema.org-Daten enthält. */
++function looksLikeSchema(parsed: unknown): boolean {
++  for (const n of Array.isArray(parsed) ? parsed : [parsed]) {
++    if (n === null || typeof n !== "object") continue;
++    const r = n as Record<string, unknown>;
++    if ("@context" in r || "@type" in r || "@graph" in r) return true;
++  }
++  return false;
++}
++
+ function extractSchema(doc: Document): VerifiedFacts["schema"] {
+-  const jsonLdBlocks: string[] = [];
++  const rawBlocks: string[] = [];
+   doc.querySelectorAll('script[type="application/ld+json"]').forEach((el) => {
+     const text = el.textContent?.trim();
+-    if (text) jsonLdBlocks.push(text);
++    if (text) rawBlocks.push(text);
+   });
+ 
+   let jsonLdValid = 0;
+@@ -437,48 +513,105 @@
+   let hasWebSite = false;
+   let hasBreadcrumb = false;
+   let hasLocalBusiness = false;
+-  const orgComplete = { hasName: false, hasUrl: false, hasLogo: false, hasSameAs: false, complete: false };
++  const orgComplete = {
++    hasName: false,
++    hasUrl: false,
++    hasLogo: false,
++    hasSameAs: false,
++    complete: false,
++  };
++
++  /** Zählt nur Blöcke, die tatsächlich schema.org sein wollen. */
++  let schemaBlockCount = 0;
+ 
+-  for (const block of jsonLdBlocks) {
++  for (const block of rawBlocks) {
++    // Wrapper entfernen: BOM, CDATA (// und /* Varianten), HTML-Kommentare
++    const cleaned = block
++      .replace(/^\uFEFF/, "")
++      .replace(/^\s*<!--/, "")
++      .replace(/-->\s*$/, "")
++      .replace(/^\s*(?:\/\/|\/\*)?\s*<!\[CDATA\[\s*(?:\*\/)?/, "")
++      .replace(/(?:\/\/|\/\*)?\s*\]\]>\s*(?:\*\/)?\s*$/, "")
++      .trim();
++
++    // FIX 3: Kein JSON-Start = fremde Nutzung des Tags (Inline-JS). Kein Fehler.
++    if (!/^[[{]/.test(cleaned)) continue;
++
++    let parsed: unknown;
+     try {
+-      const parsed = JSON.parse(block);
+-      const items = Array.isArray(parsed) ? parsed : [parsed];
+-      for (const item of items) {
+-        if (!item?.["@type"]) {
+-          jsonLdInvalid++;
+-          errors.push("JSON-LD block without @type");
+-          continue;
+-        }
+-        jsonLdValid++;
+-        const typeName = Array.isArray(item["@type"]) ? item["@type"].join(",") : item["@type"];
+-        types.push(typeName);
+-
+-        if (/Organization/i.test(typeName)) {
+-          hasOrganization = true;
+-          orgComplete.hasName = !!item.name;
+-          orgComplete.hasUrl = !!item.url;
+-          orgComplete.hasLogo = !!item.logo;
+-          orgComplete.hasSameAs = !!(item.sameAs && (
+-            Array.isArray(item.sameAs) ? item.sameAs.length > 0 : true
+-          ));
+-          orgComplete.complete = orgComplete.hasName && orgComplete.hasUrl && orgComplete.hasLogo && orgComplete.hasSameAs;
+-          evidence.push(`JSON-LD Organization: name=${orgComplete.hasName} url=${orgComplete.hasUrl} logo=${orgComplete.hasLogo} sameAs=${orgComplete.hasSameAs}`);
+-        }
+-        if (/FAQ/i.test(typeName)) hasFAQ = true;
+-        if (/Article/i.test(typeName)) hasArticle = true;
+-        if (/Product/i.test(typeName)) hasProduct = true;
+-        if (/WebSite/i.test(typeName)) hasWebSite = true;
+-        if (/BreadcrumbList/i.test(typeName)) hasBreadcrumb = true;
+-        if (/LocalBusiness/i.test(typeName)) hasLocalBusiness = true;
+-        evidence.push(`JSON-LD type: ${typeName}`);
+-      }
++      parsed = JSON.parse(cleaned);
+     } catch {
++      try {
++        parsed = JSON.parse(cleaned.replace(/,\s*([}\]])/g, "$1")); // trailing commas
++      } catch {
++        schemaBlockCount++;
++        jsonLdInvalid++;
++        errors.push("JSON-LD block: invalid JSON");
++        continue;
++      }
++    }
++
++    // FIX 3: Cookie-Banner-Configs o.ä. sind kein defektes Schema.
++    if (!looksLikeSchema(parsed)) continue;
++
++    schemaBlockCount++;
++
++    const roots: Record<string, unknown>[] = [];
++    collectRootEntities(parsed, roots);
++
++    if (roots.length === 0) {
+       jsonLdInvalid++;
+-      errors.push("JSON-LD block: invalid JSON");
++      errors.push("JSON-LD block without @type");
++      continue;
++    }
++
++    jsonLdValid++;
++
++    // Anzeige: nur Wurzeltypen
++    for (const root of roots) {
++      for (const typeName of schemaTypes(root)) {
++        types.push(typeName); // FIX 2: jeder Typ einzeln, kein join(",")
++        evidence.push(`JSON-LD type: ${typeName}`);
++      }
++
++      // Organization-Vollständigkeit: bestes Objekt gewinnt, nicht das letzte
++      if (schemaTypes(root).some((t) => /Organization/i.test(t))) {
++        const cand = {
++          hasName: !!root.name,
++          hasUrl: !!root.url,
++          hasLogo: !!root.logo,
++          hasSameAs: !!(
++            root.sameAs && (Array.isArray(root.sameAs) ? root.sameAs.length > 0 : true)
++          ),
++          complete: false,
++        };
++        cand.complete = cand.hasName && cand.hasUrl && cand.hasLogo && cand.hasSameAs;
++        const scoreOf = (o: typeof cand) =>
++          Number(o.hasName) + Number(o.hasUrl) + Number(o.hasLogo) + Number(o.hasSameAs);
++        if (scoreOf(cand) > scoreOf(orgComplete)) Object.assign(orgComplete, cand);
++        evidence.push(
++          `JSON-LD Organization: name=${cand.hasName} url=${cand.hasUrl} logo=${cand.hasLogo} sameAs=${cand.hasSameAs}`,
++        );
++      }
++    }
++
++    // Flags: auch verschachtelte Entitäten zählen (publisher, mainEntity, ...)
++    const nested = new Set<string>();
++    collectNestedTypes(parsed, nested);
++    for (const typeName of nested) {
++      if (/Organization/i.test(typeName)) hasOrganization = true;
++      if (/FAQ/i.test(typeName)) hasFAQ = true;
++      if (/Article|BlogPosting|NewsArticle/i.test(typeName)) hasArticle = true;
++      if (/^Product$/i.test(typeName)) hasProduct = true;
++      if (/^WebSite$/i.test(typeName)) hasWebSite = true;
++      if (/BreadcrumbList/i.test(typeName)) hasBreadcrumb = true;
++      if (/LocalBusiness|Store|Restaurant|ProfessionalService/i.test(typeName)) {
++        hasLocalBusiness = true;
++      }
+     }
+   }
+ 
+-  // Microdata
++  // Microdata (unverändert)
+   const microdataTypes: string[] = [];
+   doc.querySelectorAll("[itemscope]").forEach((el) => {
+     const t = el.getAttribute("itemtype");
+@@ -488,16 +621,24 @@
+     }
+   });
+ 
+-  if (jsonLdBlocks.length === 0) evidence.push("No JSON-LD blocks found on page");
++  if (schemaBlockCount === 0) evidence.push("No JSON-LD blocks found on page");
+ 
+   return {
+-    jsonLdBlocks: jsonLdBlocks.length,
+-    jsonLdValid, jsonLdInvalid,
++    jsonLdBlocks: schemaBlockCount,
++    jsonLdValid,
++    jsonLdInvalid,
+     types: [...new Set(types)],
+     microdataTypes,
+-    hasOrganization, organizationComplete: orgComplete,
+-    hasFAQ, hasArticle, hasProduct, hasWebSite, hasBreadcrumb, hasLocalBusiness,
+-    errors, evidence,
++    hasOrganization,
++    organizationComplete: orgComplete,
++    hasFAQ,
++    hasArticle,
++    hasProduct,
++    hasWebSite,
++    hasBreadcrumb,
++    hasLocalBusiness,
++    errors,
++    evidence,
+   };
+ }
+ 
+--- a/src/lib/geo-check/scoring.ts
++++ b/src/lib/geo-check/scoring.ts
+@@ -17,9 +17,20 @@
+   fraction?: number;
+ }
+ 
++export interface ExcludedCheck {
++  id: string;
++  label: string;
++  reason: string;
++}
++
+ export interface CategoryScore {
+-  score: number; // 0-100
++  score: number; // 0-100, nach Deckel
++  rawScore: number; // 0-100, vor Deckel
++  capApplied: boolean; // true, wenn contentCap den Score gesenkt hat
++  cap: number; // angewandter Deckelwert
+   checks: ScoreCheck[];
++  /** Checks, die mangels Datenlage nicht bewertet wurden. */
++  excludedChecks?: ExcludedCheck[];
+ }
+ 
+ export interface CitabilityBreakdown {
+@@ -113,6 +124,7 @@
+ 
+ function scoreTechnik(facts: VerifiedFacts, cap: number): CategoryScore {
+   const checks: ScoreCheck[] = [];
++  const excluded: ExcludedCheck[] = [];
+ 
+   // HTTPS (always true in our crawler, but check anyway)
+   const https = facts.resolvedUrl.startsWith("https://");
+@@ -127,8 +139,15 @@
+   checks.push({ id: "technik-canonical", label: "Canonical-Tag gesetzt", passed: canonical, weight: 15, detail: canonical ? `canonical: ${facts.meta.canonical}` : "Kein canonical-Tag", evidence: facts.meta.canonical || "none" });
+ 
+   // Robots healthy (not blocking everything)
+-  const robotsHealthy = facts.crawlers.status === "unknown" || (facts.crawlers.allowed !== null && facts.crawlers.allowed > 0);
+-  checks.push({ id: "technik-robots", label: "Robots.txt erlaubt Zugriff", passed: robotsHealthy, weight: 20, detail: robotsHealthy ? `${facts.crawlers.allowed}/${facts.crawlers.total} Crawler erlaubt` : "Alle Crawler blockiert", evidence: facts.crawlers.blocked.join(", ") || "none" });
++  // FIX: allowed === null wurde frueher als PASS gewertet und als "null/20" gerendert.
++  // Ein nicht messbarer Wert wird jetzt aus der Bewertung genommen.
++  if (robotsUnknown(facts)) {
++    excluded.push({ id: "technik-robots", label: "Robots.txt erlaubt Zugriff", reason: ROBOTS_UNKNOWN_REASON });
++  } else {
++    const allowed = facts.crawlers.allowed!;
++    const robotsHealthy = allowed > 0;
++    checks.push({ id: "technik-robots", label: "Robots.txt erlaubt Zugriff", passed: robotsHealthy, weight: 20, detail: robotsHealthy ? `${allowed}/${facts.crawlers.total} Crawler erlaubt` : "Alle Crawler blockiert", evidence: facts.crawlers.blocked.join(", ") || "none" });
++  }
+ 
+   // HTML size (not too large)
+   const sizeOk = facts.perf.htmlSizeKb < 500;
+@@ -138,17 +157,26 @@
+   const ttfbFraction = ramp(facts.perf.ttfbMs, 400, 3000);
+   checks.push({ id: "technik-ttfb", label: "TTFB", passed: ttfbFraction >= 0.5, weight: 15, detail: `TTFB: ${facts.perf.ttfbMs}ms`, evidence: `${facts.perf.ttfbMs}ms`, fraction: ttfbFraction });
+ 
+-  const raw = weightedAverage(checks);
+-  const score = applyCap(raw, cap);
+-  return { score, checks };
++  return finalize(checks, cap, excluded);
+ }
+ 
+ function scoreAiReadiness(facts: VerifiedFacts, cap: number): CategoryScore {
+   const checks: ScoreCheck[] = [];
++  const excluded: ExcludedCheck[] = [];
+ 
+   // Crawlers allowed
+-  const crawlersOk = facts.crawlers.allowed !== null && facts.crawlers.allowed >= 15;
+-  checks.push({ id: "ai-crawlers", label: "KI-Crawler Zugang", passed: crawlersOk, weight: 25, detail: `${facts.crawlers.allowed ?? "?"}/${facts.crawlers.total} erlaubt`, evidence: facts.crawlers.blocked.join(", ") || "alle erlaubt" });
++  // FIX: derselbe null-Wert wurde hier als FAIL gewertet und als "?/20" gerendert,
++  // waehrend scoreTechnik ihn als PASS zaehlte. Jetzt konsistent ausgeschlossen.
++  // Zusaetzlich: nicht mehr "15 von 20", sondern gewichtet nach den Crawlern,
++  // deren Blockade wirklich zaehlt.
++  if (robotsUnknown(facts)) {
++    excluded.push({ id: "ai-crawlers", label: "KI-Crawler Zugang", reason: ROBOTS_UNKNOWN_REASON });
++  } else {
++    const blockedSet = new Set(facts.crawlers.blocked.map((c) => c.toLowerCase()));
++    const criticalBlocked = CRITICAL_AI_CRAWLERS.filter((c) => blockedSet.has(c.toLowerCase()));
++    const crawlerFraction = (CRITICAL_AI_CRAWLERS.length - criticalBlocked.length) / CRITICAL_AI_CRAWLERS.length;
++    checks.push({ id: "ai-crawlers", label: "KI-Crawler Zugang", passed: criticalBlocked.length === 0, weight: 25, fraction: crawlerFraction, detail: criticalBlocked.length === 0 ? `${facts.crawlers.allowed}/${facts.crawlers.total} erlaubt` : `${facts.crawlers.allowed}/${facts.crawlers.total} erlaubt \u00b7 blockiert: ${criticalBlocked.join(", ")}`, evidence: facts.crawlers.blocked.join(", ") || "alle erlaubt" });
++  }
+ 
+   // llms.txt
+   const llmsTxt = facts.llmsTxt.found;
+@@ -167,13 +195,12 @@
+   const faq = facts.schema.hasFAQ || facts.content.hasFaqSection;
+   checks.push({ id: "ai-faq", label: "FAQ-Sektion", passed: faq, weight: 20, detail: faq ? "FAQ erkannt" : "Keine FAQ-Sektion", evidence: faq ? "JSON-LD FAQPage oder Sektion gefunden" : "none" });
+ 
+-  const raw = weightedAverage(checks);
+-  const score = applyCap(raw, cap);
+-  return { score, checks };
++  return finalize(checks, cap, excluded);
+ }
+ 
+ function scoreContent(facts: VerifiedFacts, cap: number): CategoryScore {
+   const checks: ScoreCheck[] = [];
++  const excluded: ExcludedCheck[] = [];
+ 
+   // Word count
+   const words = facts.content.wordCount;
+@@ -204,13 +231,12 @@
+   const altOk = imgTotal === 0 || imgAlt >= 0.8;
+   checks.push({ id: "content-alt", label: "Bilder mit Alt-Text", passed: altOk, weight: 15, detail: `${facts.content.imagesMissingAlt} von ${imgTotal} ohne Alt`, evidence: imgTotal > 0 ? `${Math.round(imgAlt * 100)}% haben Alt-Text` : "Keine Bilder" });
+ 
+-  const raw = weightedAverage(checks);
+-  const score = applyCap(raw, cap);
+-  return { score, checks };
++  return finalize(checks, cap, excluded);
+ }
+ 
+ function scoreTrust(facts: VerifiedFacts, cap: number): CategoryScore {
+   const checks: ScoreCheck[] = [];
++  const excluded: ExcludedCheck[] = [];
+ 
+   // E-E-A-T trust score from crawler
+   const trust = facts.eeat.trustScore;
+@@ -231,13 +257,12 @@
+   const discoveryOk = facts.eeat.discovery === "link";
+   checks.push({ id: "trust-discovery", label: "Rechtliche Seiten per Link gefunden", passed: discoveryOk, weight: 30, detail: `Discovery: ${facts.eeat.discovery}`, evidence: facts.eeat.discovery === "link" ? "Alle Seiten im Navigationssystem gefunden" : facts.eeat.discovery === "guess" ? "Teilweise geraten (geringere Qualität)" : "Nichts gefunden" });
+ 
+-  const raw = weightedAverage(checks);
+-  const score = applyCap(raw, cap);
+-  return { score, checks };
++  return finalize(checks, cap, excluded);
+ }
+ 
+ function scoreSeo(facts: VerifiedFacts, cap: number): CategoryScore {
+   const checks: ScoreCheck[] = [];
++  const excluded: ExcludedCheck[] = [];
+ 
+   const hasTitle = !!facts.meta.title;
+   checks.push({ id: "seo-title", label: "Title-Tag vorhanden", passed: hasTitle, weight: 20, detail: hasTitle ? facts.meta.title!.slice(0, 60) : "Kein Title", evidence: facts.meta.title || "none" });
+@@ -257,13 +282,12 @@
+   const hasViewport = facts.meta.hasViewport;
+   checks.push({ id: "seo-viewport", label: "Viewport-Meta", passed: hasViewport, weight: 15, detail: hasViewport ? "Viewport gesetzt" : "Kein Viewport", evidence: hasViewport ? "yes" : "no" });
+ 
+-  const raw = weightedAverage(checks);
+-  const score = applyCap(raw, cap);
+-  return { score, checks };
++  return finalize(checks, cap, excluded);
+ }
+ 
+ function scoreDesignUx(facts: VerifiedFacts, cap: number): CategoryScore {
+   const checks: ScoreCheck[] = [];
++  const excluded: ExcludedCheck[] = [];
+ 
+   const hasViewport = facts.meta.hasViewport;
+   checks.push({ id: "ux-viewport", label: "Mobile Viewport", passed: hasViewport, weight: 30, detail: hasViewport ? "Viewport gesetzt" : "Kein Viewport", evidence: hasViewport ? "yes" : "no" });
+@@ -282,13 +306,12 @@
+   const hasContent = facts.content.wordCount >= 100;
+   checks.push({ id: "ux-content", label: "Genügend Inhalte", passed: hasContent, weight: 20, detail: `${facts.content.wordCount} Wörter`, evidence: `${facts.content.wordCount} Wörter` });
+ 
+-  const raw = weightedAverage(checks);
+-  const score = applyCap(raw, cap);
+-  return { score, checks };
++  return finalize(checks, cap, excluded);
+ }
+ 
+ function scorePerformance(facts: VerifiedFacts, cap: number): CategoryScore {
+   const checks: ScoreCheck[] = [];
++  const excluded: ExcludedCheck[] = [];
+ 
+   // If PSI available, use it
+   if (facts.perf.psi) {
+@@ -314,9 +337,7 @@
+     checks.push({ id: "perf-size", label: "HTML unter 200KB", passed: sizeOk, weight: 30, detail: `${facts.perf.htmlSizeKb}KB`, evidence: `${facts.perf.htmlSizeKb}KB` });
+   }
+ 
+-  const raw = weightedAverage(checks);
+-  const score = applyCap(raw, cap);
+-  return { score, checks };
++  return finalize(checks, cap, excluded);
+ }
+ 
+ function scoreAiVisibility(_facts: VerifiedFacts, cap: number): CategoryScore {
+@@ -325,7 +346,7 @@
+   const checks: ScoreCheck[] = [
+     { id: "ai-vis-placeholder", label: "KI-Sichtbarkeit", passed: false, weight: 100, detail: "Wird nach KI-Abfragen berechnet", evidence: "Noch nicht ausgeführt" },
+   ];
+-  return { score: 0, checks };
++  return { score: 0, rawScore: 0, capApplied: false, cap, checks };
+ }
+ 
+ // ─── Citability ───
+@@ -480,6 +501,45 @@
+   return Math.min(score, cap);
+ }
+ 
++/**
++ * Schliesst eine Kategorie ab. Gibt rawScore und cap mit zurueck, damit der
++ * Report einen gedeckelten Wert erklaeren kann statt ihn unkommentiert zu zeigen
++ * (SEO 6/6 gruen, Anzeige 86/100).
++ */
++function finalize(
++  checks: ScoreCheck[],
++  cap: number,
++  excluded: ExcludedCheck[] = [],
++): CategoryScore {
++  const rawScore = Math.round(weightedAverage(checks));
++  const score = applyCap(rawScore, cap);
++  return {
++    score,
++    rawScore,
++    capApplied: score < rawScore,
++    cap,
++    checks,
++    excludedChecks: excluded.length > 0 ? excluded : undefined,
++  };
++}
++
++/** KI-Crawler, deren Blockade tatsaechlich Wirkung hat. */
++const CRITICAL_AI_CRAWLERS = [
++  "GPTBot",
++  "OAI-SearchBot",
++  "ChatGPT-User",
++  "PerplexityBot",
++  "ClaudeBot",
++  "Google-Extended",
++];
++
++const ROBOTS_UNKNOWN_REASON =
++  "robots.txt war nicht erreichbar, dieser Punkt wurde nicht bewertet";
++
++function robotsUnknown(facts: VerifiedFacts): boolean {
++  return facts.crawlers.status === "unknown" || facts.crawlers.allowed === null;
++}
++
+ function verdictFromScore(score: number): { label: string; headline: string } {
+   if (score >= 80) return { label: "Exzellent", headline: `Ihre Website ist hervorragend fuer KI-Sichtbarkeit vorbereitet (${score}/100).` };
+   if (score >= 60) return { label: "Gut", headline: `Ihre Website ist solide aufgestellt, mit einigen Optimierungsmoeglichkeiten (${score}/100).` };
