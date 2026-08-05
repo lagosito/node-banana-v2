@@ -17,9 +17,20 @@ export interface ScoreCheck {
   fraction?: number;
 }
 
+export interface ExcludedCheck {
+  id: string;
+  label: string;
+  reason: string;
+}
+
 export interface CategoryScore {
-  score: number; // 0-100
+  score: number; // 0-100, nach Deckel
+  rawScore: number; // 0-100, vor Deckel
+  capApplied: boolean; // true, wenn contentCap den Score gesenkt hat
+  cap: number; // angewandter Deckelwert
   checks: ScoreCheck[];
+  /** Checks, die mangels Datenlage nicht bewertet wurden. */
+  excludedChecks?: ExcludedCheck[];
 }
 
 export interface CitabilityBreakdown {
@@ -113,6 +124,7 @@ function contentCap(facts: VerifiedFacts): number {
 
 function scoreTechnik(facts: VerifiedFacts, cap: number): CategoryScore {
   const checks: ScoreCheck[] = [];
+  const excluded: ExcludedCheck[] = [];
 
   // HTTPS (always true in our crawler, but check anyway)
   const https = facts.resolvedUrl.startsWith("https://");
@@ -127,8 +139,15 @@ function scoreTechnik(facts: VerifiedFacts, cap: number): CategoryScore {
   checks.push({ id: "technik-canonical", label: "Canonical-Tag gesetzt", passed: canonical, weight: 15, detail: canonical ? `canonical: ${facts.meta.canonical}` : "Kein canonical-Tag", evidence: facts.meta.canonical || "none" });
 
   // Robots healthy (not blocking everything)
-  const robotsHealthy = facts.crawlers.status === "unknown" || (facts.crawlers.allowed !== null && facts.crawlers.allowed > 0);
-  checks.push({ id: "technik-robots", label: "Robots.txt erlaubt Zugriff", passed: robotsHealthy, weight: 20, detail: robotsHealthy ? `${facts.crawlers.allowed}/${facts.crawlers.total} Crawler erlaubt` : "Alle Crawler blockiert", evidence: facts.crawlers.blocked.join(", ") || "none" });
+  // FIX: allowed === null wurde frueher als PASS gewertet und als "null/20" gerendert.
+  // Ein nicht messbarer Wert wird jetzt aus der Bewertung genommen.
+  if (robotsUnknown(facts)) {
+    excluded.push({ id: "technik-robots", label: "Robots.txt erlaubt Zugriff", reason: ROBOTS_UNKNOWN_REASON });
+  } else {
+    const allowed = facts.crawlers.allowed!;
+    const robotsHealthy = allowed > 0;
+    checks.push({ id: "technik-robots", label: "Robots.txt erlaubt Zugriff", passed: robotsHealthy, weight: 20, detail: robotsHealthy ? `${allowed}/${facts.crawlers.total} Crawler erlaubt` : "Alle Crawler blockiert", evidence: facts.crawlers.blocked.join(", ") || "none" });
+  }
 
   // HTML size (not too large)
   const sizeOk = facts.perf.htmlSizeKb < 500;
@@ -138,17 +157,26 @@ function scoreTechnik(facts: VerifiedFacts, cap: number): CategoryScore {
   const ttfbFraction = ramp(facts.perf.ttfbMs, 400, 3000);
   checks.push({ id: "technik-ttfb", label: "TTFB", passed: ttfbFraction >= 0.5, weight: 15, detail: `TTFB: ${facts.perf.ttfbMs}ms`, evidence: `${facts.perf.ttfbMs}ms`, fraction: ttfbFraction });
 
-  const raw = weightedAverage(checks);
-  const score = applyCap(raw, cap);
-  return { score, checks };
+  return finalize(checks, cap, excluded);
 }
 
 function scoreAiReadiness(facts: VerifiedFacts, cap: number): CategoryScore {
   const checks: ScoreCheck[] = [];
+  const excluded: ExcludedCheck[] = [];
 
   // Crawlers allowed
-  const crawlersOk = facts.crawlers.allowed !== null && facts.crawlers.allowed >= 15;
-  checks.push({ id: "ai-crawlers", label: "KI-Crawler Zugang", passed: crawlersOk, weight: 25, detail: `${facts.crawlers.allowed ?? "?"}/${facts.crawlers.total} erlaubt`, evidence: facts.crawlers.blocked.join(", ") || "alle erlaubt" });
+  // FIX: derselbe null-Wert wurde hier als FAIL gewertet und als "?/20" gerendert,
+  // waehrend scoreTechnik ihn als PASS zaehlte. Jetzt konsistent ausgeschlossen.
+  // Zusaetzlich: nicht mehr "15 von 20", sondern gewichtet nach den Crawlern,
+  // deren Blockade wirklich zaehlt.
+  if (robotsUnknown(facts)) {
+    excluded.push({ id: "ai-crawlers", label: "KI-Crawler Zugang", reason: ROBOTS_UNKNOWN_REASON });
+  } else {
+    const blockedSet = new Set(facts.crawlers.blocked.map((c) => c.toLowerCase()));
+    const criticalBlocked = CRITICAL_AI_CRAWLERS.filter((c) => blockedSet.has(c.toLowerCase()));
+    const crawlerFraction = (CRITICAL_AI_CRAWLERS.length - criticalBlocked.length) / CRITICAL_AI_CRAWLERS.length;
+    checks.push({ id: "ai-crawlers", label: "KI-Crawler Zugang", passed: criticalBlocked.length === 0, weight: 25, fraction: crawlerFraction, detail: criticalBlocked.length === 0 ? `${facts.crawlers.allowed}/${facts.crawlers.total} erlaubt` : `${facts.crawlers.allowed}/${facts.crawlers.total} erlaubt \u00b7 blockiert: ${criticalBlocked.join(", ")}`, evidence: facts.crawlers.blocked.join(", ") || "alle erlaubt" });
+  }
 
   // llms.txt
   const llmsTxt = facts.llmsTxt.found;
@@ -167,13 +195,12 @@ function scoreAiReadiness(facts: VerifiedFacts, cap: number): CategoryScore {
   const faq = facts.schema.hasFAQ || facts.content.hasFaqSection;
   checks.push({ id: "ai-faq", label: "FAQ-Sektion", passed: faq, weight: 20, detail: faq ? "FAQ erkannt" : "Keine FAQ-Sektion", evidence: faq ? "JSON-LD FAQPage oder Sektion gefunden" : "none" });
 
-  const raw = weightedAverage(checks);
-  const score = applyCap(raw, cap);
-  return { score, checks };
+  return finalize(checks, cap, excluded);
 }
 
 function scoreContent(facts: VerifiedFacts, cap: number): CategoryScore {
   const checks: ScoreCheck[] = [];
+  const excluded: ExcludedCheck[] = [];
 
   // Word count
   const words = facts.content.wordCount;
@@ -204,13 +231,12 @@ function scoreContent(facts: VerifiedFacts, cap: number): CategoryScore {
   const altOk = imgTotal === 0 || imgAlt >= 0.8;
   checks.push({ id: "content-alt", label: "Bilder mit Alt-Text", passed: altOk, weight: 15, detail: `${facts.content.imagesMissingAlt} von ${imgTotal} ohne Alt`, evidence: imgTotal > 0 ? `${Math.round(imgAlt * 100)}% haben Alt-Text` : "Keine Bilder" });
 
-  const raw = weightedAverage(checks);
-  const score = applyCap(raw, cap);
-  return { score, checks };
+  return finalize(checks, cap, excluded);
 }
 
 function scoreTrust(facts: VerifiedFacts, cap: number): CategoryScore {
   const checks: ScoreCheck[] = [];
+  const excluded: ExcludedCheck[] = [];
 
   // E-E-A-T trust score from crawler
   const trust = facts.eeat.trustScore;
@@ -231,13 +257,12 @@ function scoreTrust(facts: VerifiedFacts, cap: number): CategoryScore {
   const discoveryOk = facts.eeat.discovery === "link";
   checks.push({ id: "trust-discovery", label: "Rechtliche Seiten per Link gefunden", passed: discoveryOk, weight: 30, detail: `Discovery: ${facts.eeat.discovery}`, evidence: facts.eeat.discovery === "link" ? "Alle Seiten im Navigationssystem gefunden" : facts.eeat.discovery === "guess" ? "Teilweise geraten (geringere Qualität)" : "Nichts gefunden" });
 
-  const raw = weightedAverage(checks);
-  const score = applyCap(raw, cap);
-  return { score, checks };
+  return finalize(checks, cap, excluded);
 }
 
 function scoreSeo(facts: VerifiedFacts, cap: number): CategoryScore {
   const checks: ScoreCheck[] = [];
+  const excluded: ExcludedCheck[] = [];
 
   const hasTitle = !!facts.meta.title;
   checks.push({ id: "seo-title", label: "Title-Tag vorhanden", passed: hasTitle, weight: 20, detail: hasTitle ? facts.meta.title!.slice(0, 60) : "Kein Title", evidence: facts.meta.title || "none" });
@@ -257,13 +282,12 @@ function scoreSeo(facts: VerifiedFacts, cap: number): CategoryScore {
   const hasViewport = facts.meta.hasViewport;
   checks.push({ id: "seo-viewport", label: "Viewport-Meta", passed: hasViewport, weight: 15, detail: hasViewport ? "Viewport gesetzt" : "Kein Viewport", evidence: hasViewport ? "yes" : "no" });
 
-  const raw = weightedAverage(checks);
-  const score = applyCap(raw, cap);
-  return { score, checks };
+  return finalize(checks, cap, excluded);
 }
 
 function scoreDesignUx(facts: VerifiedFacts, cap: number): CategoryScore {
   const checks: ScoreCheck[] = [];
+  const excluded: ExcludedCheck[] = [];
 
   const hasViewport = facts.meta.hasViewport;
   checks.push({ id: "ux-viewport", label: "Mobile Viewport", passed: hasViewport, weight: 30, detail: hasViewport ? "Viewport gesetzt" : "Kein Viewport", evidence: hasViewport ? "yes" : "no" });
@@ -282,13 +306,12 @@ function scoreDesignUx(facts: VerifiedFacts, cap: number): CategoryScore {
   const hasContent = facts.content.wordCount >= 100;
   checks.push({ id: "ux-content", label: "Genügend Inhalte", passed: hasContent, weight: 20, detail: `${facts.content.wordCount} Wörter`, evidence: `${facts.content.wordCount} Wörter` });
 
-  const raw = weightedAverage(checks);
-  const score = applyCap(raw, cap);
-  return { score, checks };
+  return finalize(checks, cap, excluded);
 }
 
 function scorePerformance(facts: VerifiedFacts, cap: number): CategoryScore {
   const checks: ScoreCheck[] = [];
+  const excluded: ExcludedCheck[] = [];
 
   // If PSI available, use it
   if (facts.perf.psi) {
@@ -314,9 +337,7 @@ function scorePerformance(facts: VerifiedFacts, cap: number): CategoryScore {
     checks.push({ id: "perf-size", label: "HTML unter 200KB", passed: sizeOk, weight: 30, detail: `${facts.perf.htmlSizeKb}KB`, evidence: `${facts.perf.htmlSizeKb}KB` });
   }
 
-  const raw = weightedAverage(checks);
-  const score = applyCap(raw, cap);
-  return { score, checks };
+  return finalize(checks, cap, excluded);
 }
 
 function scoreAiVisibility(_facts: VerifiedFacts, cap: number): CategoryScore {
@@ -325,7 +346,7 @@ function scoreAiVisibility(_facts: VerifiedFacts, cap: number): CategoryScore {
   const checks: ScoreCheck[] = [
     { id: "ai-vis-placeholder", label: "KI-Sichtbarkeit", passed: false, weight: 100, detail: "Wird nach KI-Abfragen berechnet", evidence: "Noch nicht ausgeführt" },
   ];
-  return { score: 0, checks };
+  return { score: 0, rawScore: 0, capApplied: false, cap, checks };
 }
 
 // ─── Citability ───
@@ -478,6 +499,45 @@ function weightedAverage(checks: ScoreCheck[]): number {
 
 function applyCap(score: number, cap: number): number {
   return Math.min(score, cap);
+}
+
+/**
+ * Schliesst eine Kategorie ab. Gibt rawScore und cap mit zurueck, damit der
+ * Report einen gedeckelten Wert erklaeren kann statt ihn unkommentiert zu zeigen
+ * (SEO 6/6 gruen, Anzeige 86/100).
+ */
+function finalize(
+  checks: ScoreCheck[],
+  cap: number,
+  excluded: ExcludedCheck[] = [],
+): CategoryScore {
+  const rawScore = Math.round(weightedAverage(checks));
+  const score = applyCap(rawScore, cap);
+  return {
+    score,
+    rawScore,
+    capApplied: score < rawScore,
+    cap,
+    checks,
+    excludedChecks: excluded.length > 0 ? excluded : undefined,
+  };
+}
+
+/** KI-Crawler, deren Blockade tatsaechlich Wirkung hat. */
+const CRITICAL_AI_CRAWLERS = [
+  "GPTBot",
+  "OAI-SearchBot",
+  "ChatGPT-User",
+  "PerplexityBot",
+  "ClaudeBot",
+  "Google-Extended",
+];
+
+const ROBOTS_UNKNOWN_REASON =
+  "robots.txt war nicht erreichbar, dieser Punkt wurde nicht bewertet";
+
+function robotsUnknown(facts: VerifiedFacts): boolean {
+  return facts.crawlers.status === "unknown" || facts.crawlers.allowed === null;
 }
 
 function verdictFromScore(score: number): { label: string; headline: string } {

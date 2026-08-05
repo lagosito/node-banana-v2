@@ -418,11 +418,87 @@ function extractMeta(doc: Document, _html: string): VerifiedFacts["meta"] {
   };
 }
 
+const SCHEMA_MAX_DEPTH = 12;
+
+/** Normalisiert @type zu einem String-Array. Nie join(","). */
+function schemaTypes(item: Record<string, unknown>): string[] {
+  const t = item["@type"];
+  if (typeof t === "string") return t ? [t] : [];
+  if (Array.isArray(t)) return t.filter((x): x is string => typeof x === "string" && !!x);
+  return [];
+}
+
+/**
+ * Sammelt die WURZEL-Entitäten eines Blocks: die @graph-Knoten, die Elemente
+ * eines Top-Level-Arrays, oder das Wurzelobjekt selbst.
+ * Deren Typen sind die, die im Report angezeigt werden — nicht PostalAddress,
+ * ImageObject oder SearchAction, die nur Beiwerk einer Entität sind.
+ */
+function collectRootEntities(
+  node: unknown,
+  out: Record<string, unknown>[],
+  depth = 0,
+): void {
+  if (depth > SCHEMA_MAX_DEPTH || node === null || typeof node !== "object") return;
+
+  if (Array.isArray(node)) {
+    for (const n of node) collectRootEntities(n, out, depth + 1);
+    return;
+  }
+
+  const rec = node as Record<string, unknown>;
+
+  // FIX 1: @graph auflösen — die Knoten darin sind die Wurzelentitäten
+  if (rec["@graph"] !== undefined) {
+    collectRootEntities(rec["@graph"], out, depth + 1);
+    if (schemaTypes(rec).length > 0) out.push(rec);
+    return;
+  }
+
+  if (schemaTypes(rec).length > 0) out.push(rec);
+}
+
+/**
+ * Läuft eine Entität rekursiv ab und sammelt ALLE Typen inklusive
+ * verschachtelter Objekte. Nur für die has*-Flags, nicht für die Anzeige.
+ */
+function collectNestedTypes(node: unknown, acc: Set<string>, depth = 0): void {
+  if (depth > SCHEMA_MAX_DEPTH || node === null || typeof node !== "object") return;
+
+  if (Array.isArray(node)) {
+    for (const n of node) collectNestedTypes(n, acc, depth + 1);
+    return;
+  }
+
+  const rec = node as Record<string, unknown>;
+  for (const t of schemaTypes(rec)) acc.add(t);
+
+  // @graph muss explizit betreten werden — sonst greift der @-Filter unten
+  // und der gesamte Rank-Math-Graph bleibt unsichtbar.
+  if (rec["@graph"] !== undefined) collectNestedTypes(rec["@graph"], acc, depth + 1);
+
+  for (const key of Object.keys(rec)) {
+    if (key.startsWith("@")) continue;
+    const v = rec[key];
+    if (v !== null && typeof v === "object") collectNestedTypes(v, acc, depth + 1);
+  }
+}
+
+/** Erkennt, ob ein geparster Block überhaupt schema.org-Daten enthält. */
+function looksLikeSchema(parsed: unknown): boolean {
+  for (const n of Array.isArray(parsed) ? parsed : [parsed]) {
+    if (n === null || typeof n !== "object") continue;
+    const r = n as Record<string, unknown>;
+    if ("@context" in r || "@type" in r || "@graph" in r) return true;
+  }
+  return false;
+}
+
 function extractSchema(doc: Document): VerifiedFacts["schema"] {
-  const jsonLdBlocks: string[] = [];
+  const rawBlocks: string[] = [];
   doc.querySelectorAll('script[type="application/ld+json"]').forEach((el) => {
     const text = el.textContent?.trim();
-    if (text) jsonLdBlocks.push(text);
+    if (text) rawBlocks.push(text);
   });
 
   let jsonLdValid = 0;
@@ -437,48 +513,105 @@ function extractSchema(doc: Document): VerifiedFacts["schema"] {
   let hasWebSite = false;
   let hasBreadcrumb = false;
   let hasLocalBusiness = false;
-  const orgComplete = { hasName: false, hasUrl: false, hasLogo: false, hasSameAs: false, complete: false };
+  const orgComplete = {
+    hasName: false,
+    hasUrl: false,
+    hasLogo: false,
+    hasSameAs: false,
+    complete: false,
+  };
 
-  for (const block of jsonLdBlocks) {
+  /** Zählt nur Blöcke, die tatsächlich schema.org sein wollen. */
+  let schemaBlockCount = 0;
+
+  for (const block of rawBlocks) {
+    // Wrapper entfernen: BOM, CDATA (// und /* Varianten), HTML-Kommentare
+    const cleaned = block
+      .replace(/^\uFEFF/, "")
+      .replace(/^\s*<!--/, "")
+      .replace(/-->\s*$/, "")
+      .replace(/^\s*(?:\/\/|\/\*)?\s*<!\[CDATA\[\s*(?:\*\/)?/, "")
+      .replace(/(?:\/\/|\/\*)?\s*\]\]>\s*(?:\*\/)?\s*$/, "")
+      .trim();
+
+    // FIX 3: Kein JSON-Start = fremde Nutzung des Tags (Inline-JS). Kein Fehler.
+    if (!/^[[{]/.test(cleaned)) continue;
+
+    let parsed: unknown;
     try {
-      const parsed = JSON.parse(block);
-      const items = Array.isArray(parsed) ? parsed : [parsed];
-      for (const item of items) {
-        if (!item?.["@type"]) {
-          jsonLdInvalid++;
-          errors.push("JSON-LD block without @type");
-          continue;
-        }
-        jsonLdValid++;
-        const typeName = Array.isArray(item["@type"]) ? item["@type"].join(",") : item["@type"];
-        types.push(typeName);
+      parsed = JSON.parse(cleaned);
+    } catch {
+      try {
+        parsed = JSON.parse(cleaned.replace(/,\s*([}\]])/g, "$1")); // trailing commas
+      } catch {
+        schemaBlockCount++;
+        jsonLdInvalid++;
+        errors.push("JSON-LD block: invalid JSON");
+        continue;
+      }
+    }
 
-        if (/Organization/i.test(typeName)) {
-          hasOrganization = true;
-          orgComplete.hasName = !!item.name;
-          orgComplete.hasUrl = !!item.url;
-          orgComplete.hasLogo = !!item.logo;
-          orgComplete.hasSameAs = !!(item.sameAs && (
-            Array.isArray(item.sameAs) ? item.sameAs.length > 0 : true
-          ));
-          orgComplete.complete = orgComplete.hasName && orgComplete.hasUrl && orgComplete.hasLogo && orgComplete.hasSameAs;
-          evidence.push(`JSON-LD Organization: name=${orgComplete.hasName} url=${orgComplete.hasUrl} logo=${orgComplete.hasLogo} sameAs=${orgComplete.hasSameAs}`);
-        }
-        if (/FAQ/i.test(typeName)) hasFAQ = true;
-        if (/Article/i.test(typeName)) hasArticle = true;
-        if (/Product/i.test(typeName)) hasProduct = true;
-        if (/WebSite/i.test(typeName)) hasWebSite = true;
-        if (/BreadcrumbList/i.test(typeName)) hasBreadcrumb = true;
-        if (/LocalBusiness/i.test(typeName)) hasLocalBusiness = true;
+    // FIX 3: Cookie-Banner-Configs o.ä. sind kein defektes Schema.
+    if (!looksLikeSchema(parsed)) continue;
+
+    schemaBlockCount++;
+
+    const roots: Record<string, unknown>[] = [];
+    collectRootEntities(parsed, roots);
+
+    if (roots.length === 0) {
+      jsonLdInvalid++;
+      errors.push("JSON-LD block without @type");
+      continue;
+    }
+
+    jsonLdValid++;
+
+    // Anzeige: nur Wurzeltypen
+    for (const root of roots) {
+      for (const typeName of schemaTypes(root)) {
+        types.push(typeName); // FIX 2: jeder Typ einzeln, kein join(",")
         evidence.push(`JSON-LD type: ${typeName}`);
       }
-    } catch {
-      jsonLdInvalid++;
-      errors.push("JSON-LD block: invalid JSON");
+
+      // Organization-Vollständigkeit: bestes Objekt gewinnt, nicht das letzte
+      if (schemaTypes(root).some((t) => /Organization/i.test(t))) {
+        const cand = {
+          hasName: !!root.name,
+          hasUrl: !!root.url,
+          hasLogo: !!root.logo,
+          hasSameAs: !!(
+            root.sameAs && (Array.isArray(root.sameAs) ? root.sameAs.length > 0 : true)
+          ),
+          complete: false,
+        };
+        cand.complete = cand.hasName && cand.hasUrl && cand.hasLogo && cand.hasSameAs;
+        const scoreOf = (o: typeof cand) =>
+          Number(o.hasName) + Number(o.hasUrl) + Number(o.hasLogo) + Number(o.hasSameAs);
+        if (scoreOf(cand) > scoreOf(orgComplete)) Object.assign(orgComplete, cand);
+        evidence.push(
+          `JSON-LD Organization: name=${cand.hasName} url=${cand.hasUrl} logo=${cand.hasLogo} sameAs=${cand.hasSameAs}`,
+        );
+      }
+    }
+
+    // Flags: auch verschachtelte Entitäten zählen (publisher, mainEntity, ...)
+    const nested = new Set<string>();
+    collectNestedTypes(parsed, nested);
+    for (const typeName of nested) {
+      if (/Organization/i.test(typeName)) hasOrganization = true;
+      if (/FAQ/i.test(typeName)) hasFAQ = true;
+      if (/Article|BlogPosting|NewsArticle/i.test(typeName)) hasArticle = true;
+      if (/^Product$/i.test(typeName)) hasProduct = true;
+      if (/^WebSite$/i.test(typeName)) hasWebSite = true;
+      if (/BreadcrumbList/i.test(typeName)) hasBreadcrumb = true;
+      if (/LocalBusiness|Store|Restaurant|ProfessionalService/i.test(typeName)) {
+        hasLocalBusiness = true;
+      }
     }
   }
 
-  // Microdata
+  // Microdata (unverändert)
   const microdataTypes: string[] = [];
   doc.querySelectorAll("[itemscope]").forEach((el) => {
     const t = el.getAttribute("itemtype");
@@ -488,16 +621,24 @@ function extractSchema(doc: Document): VerifiedFacts["schema"] {
     }
   });
 
-  if (jsonLdBlocks.length === 0) evidence.push("No JSON-LD blocks found on page");
+  if (schemaBlockCount === 0) evidence.push("No JSON-LD blocks found on page");
 
   return {
-    jsonLdBlocks: jsonLdBlocks.length,
-    jsonLdValid, jsonLdInvalid,
+    jsonLdBlocks: schemaBlockCount,
+    jsonLdValid,
+    jsonLdInvalid,
     types: [...new Set(types)],
     microdataTypes,
-    hasOrganization, organizationComplete: orgComplete,
-    hasFAQ, hasArticle, hasProduct, hasWebSite, hasBreadcrumb, hasLocalBusiness,
-    errors, evidence,
+    hasOrganization,
+    organizationComplete: orgComplete,
+    hasFAQ,
+    hasArticle,
+    hasProduct,
+    hasWebSite,
+    hasBreadcrumb,
+    hasLocalBusiness,
+    errors,
+    evidence,
   };
 }
 
