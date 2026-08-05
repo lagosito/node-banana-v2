@@ -63,7 +63,15 @@ function buildV2Phase1(row: any): Record<string, unknown> {
       ? Object.fromEntries(
           Object.entries(categoryScores).map(([key, cat]: [string, any]) => [
             key,
-            { score: cat.score, checks: cat.checks.map(formatCheck) },
+            {
+              score: cat.score,
+              // Fallbacks: Reports aus der Zeit vor diesem Deploy haben die Felder nicht.
+              rawScore: cat.rawScore ?? cat.score,
+              cap: cat.cap ?? null,
+              capApplied: cat.capApplied ?? false,
+              checks: cat.checks.map(formatCheck),
+              excludedChecks: cat.excludedChecks ?? [],
+            },
           ]),
         )
       : null,
@@ -105,7 +113,9 @@ function formatCheck(check: ScoreCheck) {
   if (check.id === "ai-vis-placeholder") {
     return { id: check.id, label: check.label, passed: null, weight: check.weight, detail: "Wird nach KI-Abfragen berechnet", status: "pending" };
   }
-  return { id: check.id, label: check.label, passed: check.passed, weight: check.weight, detail: check.detail };
+  // fraction mitgeben: Checks mit Teilpunkten (TTFB, Ladezeit, KI-Crawler-Zugang)
+  // sind sonst im Report nur ein binaeres Haekchen.
+  return { id: check.id, label: check.label, passed: check.passed, weight: check.weight, detail: check.detail, fraction: check.fraction ?? null };
 }
 
 // ─── POST handler ───
