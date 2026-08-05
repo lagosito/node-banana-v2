@@ -14,6 +14,7 @@ import {
   inferVerticalFromTitle,
   classifyDescriptor,
 } from "@/lib/geo-check";
+import { normalizeUrl } from "@/lib/normalize-url";
 import { collectFacts } from "@/lib/geo-check/crawler";
 import { scoreReport } from "@/lib/geo-check/scoring";
 import type { ScoreCheck, CategoryScore } from "@/lib/geo-check/scoring";
@@ -118,11 +119,19 @@ export async function POST(req: NextRequest) {
       return json({ error: "website_url is required" }, { status: 400 });
     }
 
+    const normalizedUrl = normalizeUrl(website_url);
+    if (!normalizedUrl) {
+      return json(
+        { error: "Bitte gib eine gültige Domain ein, z.B. www.beispiel.de" },
+        { status: 400 },
+      );
+    }
+
     if (vertical && !isValidVertical(vertical)) {
       return json({ error: `Invalid vertical. Valid: ${VALID_VERTICALS.join(", ")}` }, { status: 400 });
     }
 
-    const dns = await validateDomain(website_url);
+    const dns = await validateDomain(normalizedUrl);
     if (!dns.valid) {
       return json({ error: dns.error }, { status: 400 });
     }
@@ -219,7 +228,7 @@ export async function POST(req: NextRequest) {
     let crawlFailedReason: string | null = null;
 
     try {
-      facts = await collectFacts(website_url);
+      facts = await collectFacts(normalizedUrl);
       tFacts = Date.now();
     } catch (crawlErr: unknown) {
       const isUnreachable = crawlErr instanceof Error && (crawlErr as any).errorType === "homepage_unreachable";
@@ -254,7 +263,7 @@ export async function POST(req: NextRequest) {
 
       const { id: reportId, shortSlug } = await createReport({
         domain: dns.domain,
-        url: website_url,
+        url: normalizedUrl,
         overallScore: null,
         categoryScores: null,
         citability: null,
@@ -364,7 +373,7 @@ export async function POST(req: NextRequest) {
     // Save report (status: pending — LLM phase not started)
     const { id: reportId, shortSlug } = await createReport({
       domain: dns.domain,
-      url: website_url,
+      url: normalizedUrl,
       resolvedUrl: facts.meta.canonical ?? undefined,
       lang: facts.meta.htmlLang ?? undefined,
       overallScore: scores.overallScore,
