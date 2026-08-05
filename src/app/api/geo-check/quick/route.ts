@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
       return json({ error: `Invalid vertical. Valid: ${VALID_VERTICALS.join(", ")}` }, { status: 400 });
     }
 
-    const dns = await validateDomain(normalizedUrl);
+    let dns = await validateDomain(normalizedUrl);
     if (!dns.valid) {
       return json({ error: dns.error }, { status: 400 });
     }
@@ -223,19 +223,40 @@ export async function POST(req: NextRequest) {
 
     // Step 1: Collect facts (deterministic crawler)
     let facts: any;
-    let tFacts: number;
+    let tFacts = 0;
     let crawlFailed = false;
     let crawlFailedReason: string | null = null;
+    let effectiveUrl = normalizedUrl;
 
     try {
-      facts = await collectFacts(normalizedUrl);
+      facts = await collectFacts(effectiveUrl);
       tFacts = Date.now();
     } catch (crawlErr: unknown) {
       const isUnreachable = crawlErr instanceof Error && (crawlErr as any).errorType === "homepage_unreachable";
       if (!isUnreachable) throw crawlErr; // re-throw non-crawl errors
 
-      crawlFailed = true;
-      crawlFailedReason = "blocked";
+      // www fallback: retry once on DNS/connection failure when hostname has no www prefix
+      const httpStatus = (crawlErr as any).httpStatus ?? 0;
+      const hostname = new URL(effectiveUrl).hostname;
+      if (httpStatus === 0 && !hostname.startsWith("www.")) {
+        const wwwUrl = effectiveUrl.replace(/^(https?:\/\/)/, "$1www.");
+        console.log(`[GEO-Check] www fallback: retrying with ${wwwUrl}`);
+        try {
+          facts = await collectFacts(wwwUrl);
+          tFacts = Date.now();
+          effectiveUrl = wwwUrl;
+          // Re-validate domain for the www version
+          const wwwDns = await validateDomain(wwwUrl);
+          if (wwwDns.valid) dns = wwwDns;
+        } catch {
+          // Retry also failed — fall through to crawl_failed
+          console.log(`[GEO-Check] www fallback also failed for ${wwwUrl}`);
+        }
+      }
+
+      if (!facts) {
+        crawlFailed = true;
+        crawlFailedReason = "blocked";
 
       // Create report with nulls — no technical data
       const brandFromDomain = dns.domain.replace(/\.[^.]+$/, "").replace(/^www\./, "");
@@ -263,7 +284,7 @@ export async function POST(req: NextRequest) {
 
       const { id: reportId, shortSlug } = await createReport({
         domain: dns.domain,
-        url: normalizedUrl,
+        url: effectiveUrl,
         overallScore: null,
         categoryScores: null,
         citability: null,
@@ -303,6 +324,7 @@ export async function POST(req: NextRequest) {
         status: "pending",
         selected_vertical: vertical || "Other",
       }, { headers: { "x-ratelimit-limit": String(maxPerDay), "x-ratelimit-remaining": String(rateLimit.remaining) } });
+      }
     }
 
     // Step 2: Score report (deterministic scoring)
@@ -373,7 +395,7 @@ export async function POST(req: NextRequest) {
     // Save report (status: pending — LLM phase not started)
     const { id: reportId, shortSlug } = await createReport({
       domain: dns.domain,
-      url: normalizedUrl,
+      url: effectiveUrl,
       resolvedUrl: facts.meta.canonical ?? undefined,
       lang: facts.meta.htmlLang ?? undefined,
       overallScore: scores.overallScore,
