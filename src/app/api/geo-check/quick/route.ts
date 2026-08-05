@@ -323,6 +323,7 @@ export async function POST(req: NextRequest) {
         generated_questions: generatedQuestions,
         question_source: questionSource,
         brand_tokens: brandTokensList,
+        contentBasis: null,
         status: "pending",
         selected_vertical: vertical || "Other",
       }, { headers: { "x-ratelimit-limit": String(maxPerDay), "x-ratelimit-remaining": String(rateLimit.remaining) } });
