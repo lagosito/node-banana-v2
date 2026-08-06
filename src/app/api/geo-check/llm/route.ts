@@ -622,8 +622,13 @@ export async function POST(req: NextRequest) {
     // Update AI visibility score
     const categoryScores = report.category_scores ? { ...report.category_scores } : {} as any;
     if (mentionRate !== null && totalQueries > 0) {
+      const aiVisScore = Math.round(mentionRate * 100);
       categoryScores.aiVisibility = {
-        score: Math.round(mentionRate * 100),
+        score: aiVisScore,
+        // gleiche Form wie alle anderen Kategorien, sonst bricht das Rendering
+        rawScore: aiVisScore,
+        cap: 100,
+        capApplied: false,
         checks: [
           {
             id: "ai-vis-quick",
