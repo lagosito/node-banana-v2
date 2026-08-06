@@ -168,11 +168,20 @@ export interface VerifiedFacts {
 
 // CHANGE 3: Separate timeouts per resource type
 const PAGE_TIMEOUT = 4000;
-const CRAWL_TIME_BUDGET_MS = 12_000; // Time budget for entire crawl (Vercel safe)
-const ROBOTS_TIMEOUT = 3000;
+const CRAWL_TIME_BUDGET_MS = 16_000; // Time budget for entire crawl (Vercel safe)
+/** Kleinstes sinnvolles Zeitfenster fuer den Content-Batch. */
+const MIN_CONTENT_WINDOW_MS = 1500;
+// 3000 war zu knapp: abele-zelte.de liefert robots.txt in 1,6-3,9s, also mal
+// innerhalb und mal ausserhalb des Fensters. Der Check fiel dadurch zufaellig
+// aus der Bewertung und bewegte den Score um bis zu 10 Punkte zwischen zwei
+// identischen Laeufen.
+const ROBOTS_TIMEOUT = 6000;
 const SITEMAP_TIMEOUT = 6000;
 const SITEMAP_CHILD_TIMEOUT = 6000;
-const LLMS_TXT_TIMEOUT = 3000;
+// Gleiches Fenster wie robots.txt: llmsTxt.found ist ein reines Boolean, ein
+// Timeout ist von "existiert nicht" nicht unterscheidbar und wird als Fehler
+// gewertet. Bei langsamen Seiten war das ein falsches Negativ.
+const LLMS_TXT_TIMEOUT = 6000;
 const MAX_REDIRECTS = 5;
 const MAX_BYTES = 3 * 1024 * 1024; // CHANGE 8: 3MB byte limit
 /** Obergrenze fuer gleichzeitige Content-Fetches (Verbindungen, nicht Zeit). */
@@ -1411,8 +1420,15 @@ export async function collectFacts(url: string): Promise<VerifiedFacts> {
   // pro Seite. Die alte Division hat deshalb Seiten verworfen, die problemlos
   // in dasselbe Zeitfenster gepasst haetten, und den Score vom Zufall abhaengig
   // gemacht: dieselbe Domain lieferte je nach Rennen 2 oder 5 Seiten.
+  // Wenn weniger als PAGE_TIMEOUT uebrig ist, wurden bisher ALLE Content-Seiten
+  // verworfen, obwohl die meisten in 1-2s geladen haetten. Statt alles oder
+  // nichts wird das Fenster jetzt auf die Restzeit gekuerzt.
+  const contentWindowMs = Math.max(
+    MIN_CONTENT_WINDOW_MS,
+    Math.min(PAGE_TIMEOUT, remainingBudgetMs),
+  );
   const maxContentFromBudget =
-    remainingBudgetMs >= PAGE_TIMEOUT ? MAX_PARALLEL_CONTENT_FETCHES : 0;
+    remainingBudgetMs >= MIN_CONTENT_WINDOW_MS ? MAX_PARALLEL_CONTENT_FETCHES : 0;
   const droppedPages = contentFetches.length - maxContentFromBudget;
   const partialCrawl = droppedPages > 0;
   if (droppedPages > 0) {
@@ -1427,7 +1443,11 @@ export async function collectFacts(url: string): Promise<VerifiedFacts> {
   const legalFetchStart = performance.now();
   const remainingResults = await Promise.allSettled(
     remainingFetches.map(({ url: fetchUrl, timeoutMs }) =>
-      fetchFollowRedirects(fetchUrl, timeoutMs).then((result) => ({ url: fetchUrl, result })),
+      // auf das verbleibende Zeitfenster deckeln, damit der Batch das
+      // Gesamtbudget nicht ueberzieht
+      fetchFollowRedirects(fetchUrl, Math.min(timeoutMs, contentWindowMs)).then(
+        (result) => ({ url: fetchUrl, result }),
+      ),
     ),
   );
   const legalPagesFetchMs = Math.round(performance.now() - legalFetchStart);
