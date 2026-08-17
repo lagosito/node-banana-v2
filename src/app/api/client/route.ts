@@ -46,6 +46,9 @@ const BRAND_DNA_FIELDS = {
   aestheticTags: "Aesthetic Tags",
   dos: "Do's",
   donts: "Don'ts",
+  industry: "industry",
+  category: "category",
+  region: "region",
 };
 
 /**
@@ -98,6 +101,7 @@ export interface ClientBrandDNA {
   aestheticTags: string;
   dos: string;
   donts: string;
+  industry: string;
   // Extra narrative fields from the JSON Brand DNA
   brandEssence: string;
   businessOverview: string;
@@ -283,6 +287,7 @@ export async function GET(request: NextRequest) {
         (brandFromJson?.aesthetic || []).join(", "),
       dos: String(bf[BRAND_DNA_FIELDS.dos] || ""),
       donts: String(bf[BRAND_DNA_FIELDS.donts] || ""),
+      industry: String(bf[BRAND_DNA_FIELDS.industry] || bf[BRAND_DNA_FIELDS.category] || ""),
       brandEssence: String(brandFromJson?.brandEssence || ""),
       businessOverview: String(brandFromJson?.businessOverview || ""),
       aiBriefing: String(brandFromJson?.aiBriefing || ""),
