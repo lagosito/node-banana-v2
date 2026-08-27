@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
 
     // Fetch audit record
     const audit = await getAudit(audit_id);
-    const f = audit.fields;
+    const f = audit; // Supabase: flat format
 
     // Read Results JSON — SINGLE SOURCE OF TRUTH
     const resultsJSONRaw = f["Results JSON"];

@@ -1,90 +1,92 @@
-// GEO Audit — Airtable operations
+// GEO Audit — Supabase operations (PostgREST API)
 
 import type { AuditRecord, PromptRecord, RunResult, GeoAuditConfig } from "./types";
 
-const AIRTABLE_BASE_ID = process.env.GEO_AUDIT_BASE_ID || "appL4ES7bjExT6908";
-const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY || "";
+const SUPABASE_URL = "https://qbtoupvgujlhntorwbnj.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFidG91cHZndWpsaG50b3J3Ym5qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYyNzg0NTEsImV4cCI6MjEwMTg1NDQ1MX0.xrKWg6oeFloG1kEjw4cqoIfQpMkqgde0NG6obKCoRUk";
 
-// Table IDs
-const T = {
-  AUDITS: "tbldUrux7XHaT9SiU",
-  PROMPTS: "tblu2GLRwd4sDVPaJ",
-  RUNS: "tblqvbIlCWnrBR7fk",
-  FINDINGS: "tblV1S61qmG17H6vZ",
-  CONFIG: "tblPpaX9hRBuOcv1h",
-};
+const SUPABASE_BASE = `${SUPABASE_URL}/rest/v1`;
 
 async function atFetch(path: string, init?: RequestInit): Promise<any> {
-  const res = await fetch(`https://api.airtable.com/v0${path}`, {
+  const res = await fetch(`${SUPABASE_BASE}${path}`, {
     ...init,
     headers: {
-      Authorization: `Bearer ${AIRTABLE_API_KEY}`,
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
       "Content-Type": "application/json",
+      Prefer: "return=representation",
       ...init?.headers,
     },
   });
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`Airtable ${res.status}: ${body}`);
+    throw new Error(`Supabase ${res.status}: ${body}`);
   }
-  return res.json();
+  const text = await res.text();
+  // Some Supabase responses (e.g. DELETE with no rows) return empty body
+  return text ? JSON.parse(text) : null;
 }
 
 export async function getAudit(auditId: string): Promise<AuditRecord> {
-  return atFetch(`/${AIRTABLE_BASE_ID}/${T.AUDITS}/${auditId}`);
+  const rows = await atFetch(
+    `/geo_audit_audits?id=eq.${encodeURIComponent(auditId)}&limit=1`
+  );
+  return rows[0];
 }
 
 export async function getAuditByToken(token: string): Promise<AuditRecord | null> {
-  const filter = encodeURIComponent(`{Report Token}='${token}'`);
-  const data = await atFetch(
-    `/${AIRTABLE_BASE_ID}/${T.AUDITS}?filterByFormula=${filter}&pageSize=1`
+  const rows = await atFetch(
+    `/geo_audit_audits?report_token=eq.${encodeURIComponent(token)}&limit=1`
   );
-  return data.records?.[0] || null;
+  return rows[0] || null;
 }
 
 export async function updateAudit(auditId: string, fields: Record<string, unknown>) {
-  return atFetch(`/${AIRTABLE_BASE_ID}/${T.AUDITS}/${auditId}`, {
-    method: "PATCH",
-    body: JSON.stringify({ fields }),
-  });
+  const rows = await atFetch(
+    `/geo_audit_audits?id=eq.${encodeURIComponent(auditId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(fields),
+    }
+  );
+  return rows?.[0] || null;
 }
 
 export async function getActivePrompts(vertical: string): Promise<PromptRecord[]> {
-  const filter = encodeURIComponent(`AND({Vertical}='${vertical}',{Active}=TRUE())`);
-  const data = await atFetch(
-    `/${AIRTABLE_BASE_ID}/${T.PROMPTS}?filterByFormula=${filter}&pageSize=100`
-  );
-  return data.records || [];
+  const params = new URLSearchParams();
+  params.set("vertical", `eq.${vertical}`);
+  params.set("active", "eq.true");
+  params.set("limit", "100");
+  const rows = await atFetch(`/geo_audit_prompts?${params.toString()}`);
+  return rows || [];
 }
 
 export async function createRun(result: RunResult) {
-  return atFetch(`/${AIRTABLE_BASE_ID}/${T.RUNS}`, {
+  const rows = await atFetch(`/geo_audit_runs`, {
     method: "POST",
     body: JSON.stringify({
-      fields: {
-        Audit: [result.auditRecordId],
-        Prompt: [result.promptRecordId],
-        Provider: result.provider,
-        "Response Text": result.responseText,
-        "Brand Mentioned": result.brandMentioned,
-        "Mention Position": result.mentionPosition,
-        Sentiment: result.sentiment,
-        "Brand Domain Cited": result.brandDomainCited,
-        "Cited Domains": result.citedDomains.join("\n"),
-        "Competitors Mentioned": result.competitorsMentioned.join("\n"),
-        "Run Date": new Date().toISOString(),
-      },
-      typecast: true,
+      audit_id: result.auditRecordId,
+      prompt_id: result.promptRecordId,
+      provider: result.provider,
+      response_text: result.responseText,
+      brand_mentioned: result.brandMentioned,
+      mention_position: result.mentionPosition,
+      sentiment: result.sentiment,
+      brand_domain_cited: result.brandDomainCited,
+      cited_domains: result.citedDomains.join("\n"),
+      competitors_mentioned: result.competitorsMentioned.join("\n"),
+      run_date: new Date().toISOString(),
     }),
   });
+  return rows?.[0] || null;
 }
 
 export async function getConfig(): Promise<GeoAuditConfig> {
-  const data = await atFetch(`/${AIRTABLE_BASE_ID}/${T.CONFIG}?pageSize=20`);
+  const rows = await atFetch(`/geo_audit_config?limit=20`);
   const config: Record<string, number> = {};
-  for (const rec of data.records || []) {
-    const key = rec.fields?.Key as string;
-    const val = rec.fields?.Value as string;
+  for (const row of rows || []) {
+    const key = row.key as string;
+    const val = row.value as string;
     if (key && val) config[key] = Number(val);
   }
   return {
@@ -100,54 +102,45 @@ export async function createFinding(
   auditId: string,
   finding: { category: string; finding: string; recommendation: string; priority: number }
 ) {
-  return atFetch(`/${AIRTABLE_BASE_ID}/${T.FINDINGS}`, {
+  const rows = await atFetch(`/geo_audit_findings`, {
     method: "POST",
     body: JSON.stringify({
-      fields: {
-        "Finding Title": finding.finding.substring(0, 80),
-        Audit: [auditId],
-        Category: finding.category,
-        Finding: finding.finding,
-        Recommendation: finding.recommendation,
-        Priority: finding.priority,
-      },
-      typecast: true,
+      audit_id: auditId,
+      finding_title: finding.finding.substring(0, 80),
+      category: finding.category,
+      finding: finding.finding,
+      recommendation: finding.recommendation,
+      priority: finding.priority,
     }),
   });
+  return rows?.[0] || null;
 }
 
 export async function getFindingsForAudit(
   auditId: string
 ): Promise<{ id: string; category: string; finding: string; recommendation: string; priority: number }[]> {
-  const data = await atFetch(`/${AIRTABLE_BASE_ID}/${T.FINDINGS}?pageSize=100`);
-  return (data.records || [])
-    .filter((r: any) => {
-      const audit = r.fields.Audit;
-      return Array.isArray(audit) && audit.includes(auditId);
-    })
-    .map((r: any) => ({
-      id: r.id,
-      category: r.fields.Category || "",
-      finding: r.fields.Finding || "",
-      recommendation: r.fields.Recommendation || "",
-      priority: r.fields.Priority || 3,
-    }));
+  const rows = await atFetch(
+    `/geo_audit_findings?audit_id=eq.${encodeURIComponent(auditId)}`
+  );
+  return (rows || []).map((r: any) => ({
+    id: r.id,
+    category: r.category || "",
+    finding: r.finding || "",
+    recommendation: r.recommendation || "",
+    priority: r.priority || 3,
+  }));
 }
 
 export async function deleteFindingsForAudit(auditId: string): Promise<number> {
   const existing = await getFindingsForAudit(auditId);
   if (existing.length === 0) return 0;
 
-  // Airtable batch delete max 10 at a time
-  let deleted = 0;
-  for (let i = 0; i < existing.length; i += 10) {
-    const batch = existing.slice(i, i + 10);
-    const ids = batch.map((f) => f.id);
-    await atFetch(`/${AIRTABLE_BASE_ID}/${T.FINDINGS}`, {
+  // Delete all findings for this audit via PostgREST filter
+  await atFetch(
+    `/geo_audit_findings?audit_id=eq.${encodeURIComponent(auditId)}`,
+    {
       method: "DELETE",
-      body: JSON.stringify({ records: ids }),
-    });
-    deleted += ids.length;
-  }
-  return deleted;
+    }
+  );
+  return existing.length;
 }

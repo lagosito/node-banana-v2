@@ -1,31 +1,31 @@
-// GEO Audit — Type definitions
+// GEO Audit — Type definitions (Supabase flat format)
 
 export interface AuditRecord {
   id: string;
-  fields: {
-    "Brand Name": string;
-    "Website URL": string;
-    Vertical: string;
-    Region: string;
-    Language: string;
-    Type: string;
-    Status: string;
-    "GEO Score": number | null;
-    Competitors: string;
-    "Results JSON"?: string;
-    "Report Token"?: string;
-  };
+  airtable_id?: string;
+  report_token?: string;
+  domain?: string;
+  brand?: string;
+  brand_name?: string;
+  website_url?: string;
+  vertical: string;
+  region?: string;
+  language?: string;
+  type?: string;
+  status: string;
+  score?: number | null;
+  results_json?: string;
+  email?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface PromptRecord {
   id: string;
-  fields: {
-    "Prompt Text": string;
-    Vertical: string;
-    Intent: string;
-    Language: string;
-    Active: boolean;
-  };
+  airtable_id?: string;
+  vertical: string;
+  active: boolean;
+  text: string;
 }
 
 export interface RunResult {
@@ -64,6 +64,10 @@ export interface ProviderResponse {
   text: string;
   citations?: string[];
   groundingMetadata?: Record<string, unknown>;
+  /** Full raw response from the provider API. Persisted for forensics. */
+  rawResponse?: Record<string, unknown>;
+  /** Concrete model version that served the request (e.g. from Gemini's modelVersion field). */
+  modelVersion?: string;
 }
 
 export interface GeoAuditConfig {

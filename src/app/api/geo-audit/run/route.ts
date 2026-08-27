@@ -65,8 +65,8 @@ export async function POST(req: NextRequest) {
         const audit = await getAudit(audit_id);
         const findingsData = await generateFindings(
           result.brand,
-          audit.fields.Vertical,
-          audit.fields.Region || "Deutschland",
+          audit.vertical,
+          audit.region || "Deutschland",
           result.score,
           result.topCompetitors.map((c) => c.name),
           result.citedDomains,

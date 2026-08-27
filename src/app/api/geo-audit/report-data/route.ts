@@ -83,7 +83,7 @@ export async function GET(req: NextRequest) {
       return corsJson({ error: "Audit not found" }, { status: 404 });
     }
 
-    const resultsJSONRaw = audit.fields["Results JSON"];
+    const resultsJSONRaw = audit.results_json;
     if (!resultsJSONRaw) {
       return corsJson({ error: "Audit has no Results JSON" }, { status: 404 });
     }
